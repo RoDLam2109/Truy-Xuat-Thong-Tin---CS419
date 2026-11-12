@@ -1,0 +1,60 @@
+{
+  "version": "1.0.0",
+  "seed": 42,
+  "single_probability": 0.25,
+  "mixed_probabilities": {
+    "low": 0.1,
+    "medium": 0.25,
+    "high": 0.4
+  },
+  "protect_capitalized_noninitial": true,
+  "protected_words": [
+    "đồng", "triệu", "tỷ", "tỉ", "nghìn", "ngàn",
+    "vnd", "vnđ", "usd", "eur"
+  ],
+  "numeric_units": [
+    "ngày", "tháng", "năm", "giờ", "phút", "giây", "tuổi",
+    "km", "m", "cm", "mm", "kg", "tấn", "lít", "độ", "trăm"
+  ],
+  "abbreviations": {
+    "không": ["ko", "k"],
+    "được": ["đc", "dc"],
+    "với": ["vs"],
+    "người": ["ng"],
+    "những": ["nhg"],
+    "trong": ["trg"],
+    "cũng": ["cx"],
+    "bạn": ["bn"],
+    "mình": ["mk"],
+    "gì": ["j"],
+    "vậy": ["v"],
+    "rồi": ["r"],
+    "đang": ["đg"]
+  },
+  "phonetic": {
+    "nhiều": ["nhìu"],
+    "nhiêu": ["nhiu"],
+    "nước": ["lước"],
+    "năm": ["lăm"],
+    "làm": ["nàm"],
+    "luôn": ["nuôn"],
+    "lỗi": ["nỗi"],
+    "trên": ["chên"],
+    "trong": ["chong"],
+    "trường": ["chường"],
+    "trước": ["chước"],
+    "trình": ["chình"],
+    "trách": ["chách"],
+    "chấp": ["trấp"],
+    "chính": ["trính"],
+    "chức": ["trức"],
+    "chuyển": ["truyển"],
+    "chạy": ["trạy"],
+    "sai": ["xai"],
+    "sau": ["xau"],
+    "sẽ": ["xẽ"],
+    "số": ["xố"],
+    "xây": ["sây"],
+    "xảy": ["sảy"]
+  }
+}
