@@ -4,6 +4,8 @@ Dự án: **Evaluating the Robustness of Information Retrieval Models under Nois
 
 Thiết kế chính: **2 cách biểu diễn term × 3 mô hình × 8 điều kiện query = 48 lượt đánh giá**, sử dụng Zalo Legal. Hai biểu diễn là từ tiếng Việt và character n-gram; ba mô hình là VSM TF-IDF/cosine, BM25 và LSI/SVD.
 
+> Cập nhật 2026-11-15: phần word terms đã triển khai với dataset minhnguyent546, 640 query test; hướng dẫn tại [learned/clean_terms.md](learned/clean_terms.md). Chưa chạy retrieval hay đánh giá nhiễu.
+
 ## 1. Tổng quan phân công
 
 | Thành viên | Vai trò | Nhánh Git |
@@ -20,15 +22,16 @@ Các file/module chưa có trong repo được liệt kê dưới đây là ph�
 
 ### Task
 
-- [ ] Viết bước chuẩn bị dữ liệu Zalo Legal có thể chạy lại, gồm query, corpus và qrels.
-- [ ] Kiểm tra ID trùng, query thiếu qrels và tài liệu được qrels tham chiếu.
-- [ ] Xây pipeline `word`: chuẩn hóa → tách từ tiếng Việt → loại stopword → lọc DF/IDF.
+- [x] Viết bước chuẩn bị dataset minhnguyent546 có thể chạy lại, gồm query, corpus và qrels.
+- [x] Kiểm tra ID trùng, train/test rời nhau, query thiếu qrels và tài liệu được qrels tham chiếu.
+- [x] Xây pipeline `word`: NFC/chữ thường → PyVi → term chữ/số; mặc định stopword rỗng, không loại DF.
 - [ ] Xây pipeline `char_ngram`: chuẩn hóa → tạo character n-gram 3–5 → lọc DF.
 - [ ] Chốt bộ tách từ, stopword, quy tắc n-gram và ngưỡng lọc trong cấu hình.
-- [ ] Tạo vocabulary, ma trận term count và TF-IDF từ corpus.
-- [ ] Viết hàm transform query bằng vocabulary đã fit.
-- [ ] Lưu cấu hình, thứ tự ID tài liệu và các thành phần đã fit.
-- [ ] Viết kiểm tra cho dữ liệu, term, thứ tự ID và khả năng tái lập.
+- [x] Tạo vocabulary, ma trận term count và TF-IDF từ corpus cho nhánh word.
+- [ ] Tạo các artifact tương ứng cho nhánh char_ngram.
+- [x] Viết `TermIndex.transform()` cho word bằng vocabulary/IDF đã fit.
+- [x] Lưu cấu hình, thứ tự ID tài liệu/query, TF-IDF đã fit, dependency và hash cho word.
+- [x] Viết kiểm tra cho dữ liệu, word terms, thứ tự ID, OOV và khả năng tái lập.
 
 ### File phụ trách
 
@@ -94,7 +97,7 @@ tests/test_retrievers.py
 ### Task
 
 - [ ] Tiếp quản script sinh nhiễu hiện có; rà soát mẫu, quy tắc và độ phủ từ điển.
-- [ ] Kiểm tra bảy tập nhiễu cùng 788 ID và cùng thứ tự với tập sạch.
+- [ ] Kiểm tra bảy tập nhiễu cùng 640 ID và cùng thứ tự với tập sạch.
 - [ ] Tổng hợp tỷ lệ nhiễu thực tế, query không đổi và collision.
 - [ ] Cài MRR@10, nDCG@10 và Recall@100.
 - [ ] Tính suy giảm tuyệt đối và tương đối so với lượt sạch tương ứng.
@@ -131,7 +134,7 @@ Lam là đầu mối tổng hợp `requirements.txt`, `.gitignore`, `README.md` 
 
 ### 5.1. Dữ liệu và biểu diễn
 
-1. Giữ cố định corpus, qrels và tập 788 ID query. File nhiễu nằm trong `data/zalo_legal/noise/`.
+1. Giữ cố định corpus, qrels và tập 640 ID query. Dữ liệu mới nằm trong `data/zalo_legal_2021/`; file nhiễu tương ứng sẽ nằm trong `data/zalo_legal_2021/noise/`.
 2. Mọi file query giữ schema `id`, `text`; file nhiễu giữ nguyên ID và thứ tự của file sạch.
 3. Vocabulary, DF/IDF và SVD chỉ fit từ corpus. Query sạch/nhiễu chỉ transform, không thêm term vào vocabulary.
 4. Hàng thứ `i` của mọi ma trận phải tương ứng đúng `doc_ids[i]`. Lưu danh sách ID cùng mỗi bộ biểu diễn.
@@ -210,7 +213,7 @@ Chạy được **`word + VSM + clean/mixed_low`** từ dữ liệu đến metri
 
 1. Kiên cung cấp pipeline word, vocabulary và TF-IDF.
 2. Vũ chạy VSM cho query sạch và mixed_low bằng cùng bộ biểu diễn.
-3. Lam tính metrics, mức suy giảm và kiểm tra đủ 788 query.
+3. Lam tính metrics, mức suy giảm và kiểm tra đủ 640 query.
 
 ### Mốc 3 — Mở rộng đủ thiết kế
 

@@ -1,5 +1,11 @@
 # Evaluating the Robustness of Information Retrieval Models under Noisy Vietnamese Queries
 
+> **Bộ tài liệu đã làm:** [Mục lục](learned/README.md) · [Tổng kết triển khai](learned/implementation_summary.md) · [Bàn giao model](learned/model_handoff.md).
+>
+> **Bước đang triển khai:** chuẩn bị dữ liệu và term theo từ cho query gốc trước. Đã có `prepare_data.py`, `build_index.py`, module word/PyVi và tests; chưa có module xếp hạng/đánh giá sạch–nhiễu. Xem [hướng dẫn đầy đủ](learned/clean_terms.md) và [kết quả chạy toàn bộ corpus](learned/clean_terms_run.md).
+>
+> Nguồn mới là **minhnguyent546/zalo-ai-legal-text-retrieval-2021**, lưu riêng trong `data/zalo_legal_2021/`. Mô tả GreenNode/788 query trước đây không áp dụng cho run này. Script sinh nhiễu cũ còn giữ default đường dẫn legacy; chưa sinh lại nhiễu từ dữ liệu mới.
+
 ## 1. Mục tiêu dự án
 
 Đánh giá mức độ chống chịu của các mô hình truy xuất thông tin khi câu truy vấn tiếng Việt bị nhiễu. Với mỗi mô hình và cách biểu diễn term, lấy kết quả trên query sạch làm điểm chuẩn, chạy các phiên bản query nhiễu, rồi tính **mức suy giảm hiệu năng**.
@@ -20,42 +26,25 @@ Các câu hỏi nghiên cứu:
 
 ## 2. Dữ liệu và schema
 
-Nguồn: [GreenNode/zalo-ai-legal-text-retrieval-vn](https://huggingface.co/datasets/GreenNode/zalo-ai-legal-text-retrieval-vn).
+Nguồn đang dùng: [minhnguyent546/zalo-ai-legal-text-retrieval-2021](https://huggingface.co/datasets/minhnguyent546/zalo-ai-legal-text-retrieval-2021).
 
-| Thành phần | Đường dẫn | Số lượng hiện tại |
+Dùng `scripts/prepare_data.py` để tải snapshot và xuất các file tại `data/zalo_legal_2021/`:
+
+| Thành phần | File | Số lượng đã xác minh |
 |---|---|---:|
-| Query sạch | `data/zalo_legal/queries_clean.jsonl` | 788 query, 788 ID duy nhất |
-| Tập tài liệu | `data/zalo_legal/corpus.jsonl` | 61.425 tài liệu, ID duy nhất |
-| Nhãn liên quan | `data/zalo_legal/qrels_test.tsv` | 793 quan hệ liên quan |
-| Query nhiễu | `data/zalo_legal/noise/queries_*.jsonl` | 7 file, mỗi file 788 query |
+| Corpus | `corpus.jsonl` | 61.425 tài liệu |
+| Toàn bộ query gốc | `queries_all.jsonl` | 3.196 query |
+| Query phát triển | `queries_train.jsonl` | 2.556 query |
+| Query sạch để đánh giá cuối | `queries_clean.jsonl` | 640 query test |
+| Nhãn train/test | `qrels_train.tsv`, `qrels_test.tsv` | 2.556 / 640 dòng |
 
-File query ban đầu có 818 dòng; đã bỏ 30 dòng trùng ID có cùng nội dung, giữ lần xuất hiện đầu tiên và thứ tự gốc. Tập test được cố định với **N = 788**.
+Query được chia theo ID trong qrels; tên split `train` của bảng queries trên Hugging Face không phải cách chia thí nghiệm. Train/test có ID rời nhau. Trong bản này, mỗi query test có một nhãn liên quan dương; bộ đọc vẫn hỗ trợ nhiều tài liệu liên quan. Không mặc định tính chất này cho dataset khác.
 
-Qrels hiện có nhãn nhị phân `score = 1`: 783 query có một tài liệu liên quan và 5 query có hai tài liệu liên quan. Mọi ID trong qrels đều có bản ghi query/tài liệu tương ứng.
+Query có schema `{"id": "query-id", "text": "Câu hỏi"}`. Corpus có schema `{"id": "document-id", "title": "Tiêu đề", "text": "Nội dung"}`. Qrels có header `query-id`, `corpus-id`, `score`, phân cách bằng tab. ID được giữ nguyên dưới dạng chuỗi.
 
-### Query sạch và query nhiễu: JSONL
+Nội dung tài liệu gồm cả title và text. Module hiện tách từ từng trường riêng rồi nối danh sách term, không tăng trọng số title và không tạo từ qua ranh giới hai trường.
 
-```json
-{"id": "query-id", "text": "Nội dung câu hỏi"}
-```
-
-Mỗi dòng là một đối tượng JSON. `qid` trong code hoặc báo cáo tương ứng với trường `id` của query. Mọi file nhiễu giữ nguyên ID và thứ tự của file sạch.
-
-### Corpus: JSONL
-
-```json
-{"id": "document-id", "title": "Tiêu đề điều luật", "text": "Nội dung văn bản"}
-```
-
-Nội dung đưa vào pipeline truy xuất là `title` nối với `text`, cách nhau bằng một ký tự xuống dòng. Dùng cùng nội dung tài liệu cho mọi mô hình và cách biểu diễn term.
-
-### Qrels: TSV
-
-```text
-query-id	corpus-id	score
-```
-
-File có dòng tiêu đề và phân cách bằng tab. `query-id` nối với `queries.id`; `corpus-id` nối với `corpus.id`. ID được xử lý như chuỗi và giữ nguyên mọi ký tự.
+`queries_clean.jsonl` là query gốc chưa gây nhiễu, không phải cam kết không có lỗi tự nhiên. Các file nhiễu cho bộ 640 query **chưa được tạo trong bước này**. Các dữ liệu/báo cáo GreenNode cũ nếu có nằm riêng tại `data/zalo_legal/`, không được ghép với dữ liệu mới.
 
 ## 3. Term và hai cách biểu diễn
 
@@ -65,22 +54,19 @@ Theo cách dùng trong mô tả môn học, **term là đơn vị dùng để bi
 
 ### 3.1. Term theo từ tiếng Việt (`word`)
 
-Pipeline dự kiến:
+Pipeline **đã triển khai** trong `src/terms/`, cấu hình `configs/terms.json`:
 
-1. Chuẩn hóa Unicode NFC, chữ thường và khoảng trắng.
-2. Tách văn bản thành từ tiếng Việt bằng bộ tách từ đã chọn.
-3. Loại stopword bằng một danh sách cố định.
-4. Thống kê tần suất xuất hiện trong tài liệu và lọc term theo DF hoặc ngưỡng IDF.
-5. Lưu vocabulary và biến đổi tài liệu/query sang biểu diễn phù hợp với từng mô hình.
+1. Unicode NFC, chữ thường và chuẩn hóa khoảng trắng.
+2. Tách từ bằng PyVi 0.1.1, giữ `_` nối các tiếng thuộc từ.
+3. Giữ chữ/số, loại dấu câu khỏi danh sách term.
+4. Stopword mặc định rỗng; `min_df=1`, `max_df=1.0`, chưa loại term theo DF.
+5. Fit vocabulary, DF, count và TF-IDF chỉ trên corpus; query chỉ transform.
 
-Ví dụ: `bảo hiểm` có thể được biểu diễn thành một term `bảo_hiểm` sau tách từ, thay vì mặc định xem hai âm tiết là hai từ độc lập.
+Không stemming/lemmatization, không bỏ dấu hay sửa chính tả. Giữ số, term một ký tự và các từ phủ định/điều kiện. Ví dụ `bảo hiểm y tế` → `bảo_hiểm`, `y_tế` theo bộ tách từ đã kiểm thử.
 
-- **DF (document frequency):** số tài liệu trong corpus chứa term. Khác với tổng số lần term xuất hiện trong corpus.
-- **IDF (inverse document frequency):** trọng số dựa trên độ phổ biến của term trong tập tài liệu.
-- Lọc term quá hiếm hoặc quá phổ biến bằng `min_df`, `max_df` hoặc quy tắc IDF được ghi rõ trong cấu hình.
-- Chọn bộ tách từ, phiên bản, danh sách stopword và ngưỡng lọc trước khi đánh giá test. Rà soát stopword để tránh loại các từ có vai trò đổi nghĩa trong miền pháp lý, như từ phủ định.
+DF là số tài liệu có term, khác tổng số lần xuất hiện. Nếu đổi stopword/ngưỡng DF, tạo run mới và chốt trước khi đánh giá test. Chưa chọn ngưỡng IDF hoặc tối ưu trên nhãn test.
 
-Nhánh này dễ giải thích và thể hiện khả năng truy xuất dựa trên khớp từ. Lỗi dấu, lỗi chính tả hoặc lỗi tách từ có thể làm giảm số term khớp giữa query và tài liệu.
+Nhánh này giúp quan sát tác động của mất khớp term và thay đổi ranh giới từ khi query có lỗi. Chi tiết artifact và API transform: [learned/clean_terms.md](learned/clean_terms.md).
 
 ### 3.2. Term theo character n-gram (`char_ngram`)
 
@@ -140,7 +126,7 @@ Tất cả biến thể được tạo trực tiếp từ `queries_clean.jsonl`.
 | Hỗn hợp trung bình | `noise/queries_mixed_medium.jsonl` | Xác suất chọn mỗi token: 25% |
 | Hỗn hợp nặng | `noise/queries_mixed_high.jsonl` | Xác suất chọn mỗi token: 40% |
 
-Các đường dẫn trong bảng tính từ `data/zalo_legal/`. Mỗi file có **788 dòng**, cùng ID và thứ tự với file sạch. Ba điều kiện đơn Telex/VNI, phonetic và abbrev hiện dùng xác suất chọn token 25%; mất dấu toàn câu là một phép thử riêng có mức can thiệp mạnh.
+Các đường dẫn trong bảng tính từ `data/zalo_legal_2021/`. Khi triển khai trên nguồn mới, mỗi file nhiễu phải có **640 dòng**, cùng ID và thứ tự với file sạch. Cấu hình sinh nhiễu hiện có cho ba điều kiện đơn Telex/VNI, phonetic và abbrev dùng xác suất chọn token 25%; mất dấu toàn câu là một phép thử riêng có mức can thiệp mạnh.
 
 ### Quy tắc sinh và kiểm tra nhiễu
 
@@ -167,7 +153,7 @@ Thiết kế chính gồm:
 2 cách biểu diễn term × 3 mô hình × 8 điều kiện query = 48 lượt đánh giá
 ```
 
-Trong đó có 6 lượt sạch và 42 lượt nhiễu. Mỗi lượt dùng cùng 788 ID query và cùng tập tài liệu ứng viên.
+Trong đó có 6 lượt sạch và 42 lượt nhiễu. Mỗi lượt dùng cùng 640 ID query và cùng tập tài liệu ứng viên.
 
 | Cách biểu diễn term | Mô hình | Điều kiện |
 |---|---|---|
@@ -218,7 +204,7 @@ Mẫu bảng tổng hợp, mỗi dòng ứng với một metric và một điề
 
 ### Quy tắc tính và so sánh
 
-- Tính điểm trung bình theo query trên đủ 788 ID; không bỏ query không khớp term hoặc không có kết quả ra khỏi mẫu số.
+- Tính điểm trung bình theo query trên đủ 640 ID; không bỏ query không khớp term hoặc không có kết quả ra khỏi mẫu số.
 - Nếu vector query bằng 0 trong VSM/LSI hoặc không có term dùng được để truy xuất, trả danh sách rỗng, tính metrics bằng 0 và ghi nhận tình trạng đó.
 - Phân biệt trường hợp không có kết quả hợp lệ với run bị thiếu query do lỗi pipeline; run thiếu query phải được kiểm tra trước khi tổng hợp.
 - Lưu điểm từng `qid` để so sánh sạch–nhiễu theo cặp. Nếu tính khoảng tin cậy, lấy mẫu bootstrap theo cặp query và ghi seed/số lần lấy mẫu.
@@ -244,65 +230,60 @@ Kết quả xếp hạng dự kiến dùng JSONL:
 
 Không dùng tập test để chọn tham số hay sửa quy tắc dựa trên điểm truy xuất. Khi thay dữ liệu, vocabulary hoặc cấu hình mô hình, chạy lại lượt sạch và các lượt nhiễu cần so sánh.
 
-## 9. Trạng thái triển khai và cấu trúc repo
+## 9. Trạng thái triển khai và cách chạy dữ liệu/term
 
-**Đã có:** dữ liệu Zalo Legal, query sạch đã loại trùng, bảy file nhiễu, cấu hình sinh nhiễu, log/thống kê/mẫu rà soát và kiểm tra tự động cho phần sinh nhiễu.
+**Đã có:** script tải/kiểm tra đúng dataset đã chọn; pipeline word/PyVi; vocabulary/DF, ma trận count/TF-IDF corpus và query sạch; thứ tự ID, thống kê OOV, manifest/hash; script sinh nhiễu và tests cũ.
 
-**Cần triển khai:** hai pipeline term, vocabulary và chỉ mục, ba mô hình truy xuất, module đánh giá, bảng/biểu đồ mức suy giảm và phân tích lỗi. Các quy tắc nhiễu hiện cần tiếp tục rà soát thủ công.
+**Chưa có:** nhánh character n-gram, các retriever VSM/BM25/LSI, metrics/ranked runs và 48 lượt đánh giá. Chưa sinh nhiễu cho bộ query mới. Việc có TF-IDF không đồng nghĩa đã có kết quả truy xuất.
 
-```text
-project/
-├── scripts/
-│   ├── generate_noise.py          # Đã có
-│   ├── prepare_data.py            # Dự kiến: chuẩn bị/kiểm tra dữ liệu
-│   ├── build_index.py             # Dự kiến: word/char n-gram, vocabulary, chỉ mục
-│   ├── run_retrieval.py           # Dự kiến: VSM TF-IDF, BM25, LSI/SVD
-│   └── evaluate.py                # Dự kiến: metrics và mức suy giảm
-├── configs/
-│   ├── noise.json                # Đã có
-│   └── retrieval.json            # Dự kiến: term, bộ lọc, trọng số, tham số
-├── tests/
-│   └── test_generate_noise.py     # Đã có
-├── data/
-│   └── zalo_legal/
-│       ├── corpus.jsonl
-│       ├── qrels_test.tsv
-│       ├── queries_clean.jsonl
-│       └── noise/
-│           └── queries_*.jsonl    # Bảy điều kiện nhiễu
-├── outputs/
-│   ├── noise/                    # Đã có: log, cấu hình, thống kê và mẫu
-│   └── retrieval/                # Dự kiến: term/model/condition
-├── README.md
-├── requirements.txt              # Cần bổ sung
-└── .gitignore                    # Cần bổ sung
+Với Python 3.12, từ thư mục gốc trên Linux/macOS:
+
+```bash
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements-terms-lock.txt
+.venv/bin/python scripts/prepare_data.py
+.venv/bin/python scripts/build_index.py --qrels data/zalo_legal_2021/qrels_test.tsv
+.venv/bin/python -B -m unittest discover -s tests -v
 ```
 
-Các thành phần ghi là dự kiến chưa phải tính năng đã chạy được.
+Windows: dùng `py -3.12 -m venv .venv`, rồi thay `.venv/bin/python` bằng `.\.venv\Scripts\python.exe`. Nếu dùng uv: `uv venv --python 3.12 .venv`, sau đó `uv pip install --python .venv/bin/python -r requirements-terms-lock.txt`.
+
+Hai script mới từ chối output đã tồn tại để tránh ghi đè. Nếu dữ liệu/artifact đã có đầy đủ `manifest.json`, dùng lại; muốn build mới thì chọn `--output-dir` khác. Dữ liệu, cache, môi trường và ma trận nằm ngoài Git.
+
+```text
+scripts/prepare_data.py       # Tải snapshot HF, xuất schema và chia query theo qrels
+scripts/build_index.py        # Fit corpus, transform query gốc
+src/data_io.py                # Đọc/kiểm tra JSONL và qrels
+src/terms/                   # VietnameseTerms, build_index, TermIndex.transform
+configs/terms.json           # Word + PyVi, giữ dấu/số, chưa loại stopword/DF
+requirements-terms*.txt      # Dependency riêng của phần dữ liệu/term
+learned/clean_terms.md       # Giải thích, lệnh chạy, schema artifact và bàn giao model
+outputs/terms/word_clean/    # Count/TF-IDF, vocabulary, ID, OOV, config và hash
+```
 
 ## 10. Chạy phần sinh nhiễu hiện có
 
 Từ thư mục gốc dự án trên Windows:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/generate_noise.py --seed 42
+.\.venv\Scripts\python.exe scripts/generate_noise.py --input data/zalo_legal_2021/queries_clean.jsonl --qrels data/zalo_legal_2021/qrels_test.tsv --seed 42
 ```
 
-Script chỉ dùng thư viện chuẩn Python. Mặc định đọc `configs/noise.json` và `data/zalo_legal/queries_clean.jsonl`, kiểm tra với `qrels_test.tsv` cạnh file input nếu có, rồi ghi bảy file vào `data/zalo_legal/noise/`. File sạch, corpus và qrels được giữ nguyên. Chạy lại sẽ ghi đè các file nhiễu và báo cáo được sinh từ script.
+Script chỉ dùng thư viện chuẩn Python. Mặc định script cũ đọc `configs/noise.json` và đường dẫn legacy `data/zalo_legal/queries_clean.jsonl`; với nguồn mới phải truyền `--input` như trên, kiểm tra với `qrels_test.tsv` cạnh file input nếu có, rồi ghi bảy file vào `data/zalo_legal_2021/noise/`. File sạch, corpus và qrels được giữ nguyên. Chạy lại sẽ ghi đè các file nhiễu và báo cáo được sinh từ script.
 
 Chỉ định đầy đủ đường dẫn và số mẫu:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/generate_noise.py --input data/zalo_legal/queries_clean.jsonl --config configs/noise.json --output-dir data/zalo_legal/noise --report-dir outputs/noise --seed 42 --sample-size 10
+.\.venv\Scripts\python.exe scripts/generate_noise.py --input data/zalo_legal_2021/queries_clean.jsonl --config configs/noise.json --output-dir data/zalo_legal_2021/noise --report-dir outputs/noise --seed 42 --sample-size 10
 ```
 
 | File | Nội dung |
 |---|---|
 | [configs/noise.json](configs/noise.json) | Seed, xác suất, từ điển và từ/đơn vị cần bảo vệ |
-| [outputs/noise/summary.md](outputs/noise/summary.md) | Tỷ lệ nhiễu thực tế và số query thay đổi |
-| [outputs/noise/stats.json](outputs/noise/stats.json) | Thống kê chi tiết, collision, phân bố loại lỗi và SHA-256 |
-| [outputs/noise/config_used.json](outputs/noise/config_used.json) | Cấu hình thực tế của lần sinh |
-| [outputs/noise/samples.md](outputs/noise/samples.md) | Mẫu cặp sạch–nhiễu để rà soát |
+| `outputs/noise/summary.md` | Tỷ lệ nhiễu thực tế và số query thay đổi |
+| `outputs/noise/stats.json` | Thống kê chi tiết, collision, phân bố loại lỗi và SHA-256 |
+| `outputs/noise/config_used.json` | Cấu hình thực tế của lần sinh |
+| `outputs/noise/samples.md` | Mẫu cặp sạch–nhiễu để rà soát |
 | `outputs/noise/*.changes.jsonl` | Log biến đổi theo query và vị trí token gốc |
 
 Chỉ số vị trí token và offset ký tự trong log bắt đầu từ 0, tính trên câu sạch. Mẫu rà soát lấy từ các query thực sự đổi, không đại diện cho tỷ lệ query thay đổi toàn tập.
@@ -334,14 +315,16 @@ Nếu có người thứ năm, giao tổng quan tài liệu và biên tập báo
 
 ## 12. Điều kiện hoàn thành
 
-- [x] Có tập query sạch với 788 ID duy nhất và dữ liệu corpus/qrels tương ứng.
-- [x] Có bảy file nhiễu cùng ID/thứ tự/số dòng, seed và cấu hình tái lập.
-- [x] Có log, tỷ lệ nhiễu thực tế, thống kê collision và mẫu để rà soát.
+- [x] Có tập query sạch với 640 ID duy nhất và dữ liệu corpus/qrels tương ứng.
+- [ ] Sinh lại bảy file nhiễu cho bộ 640 query mới, giữ ID/thứ tự và cấu hình tái lập.
+- [ ] Xuất log, tỷ lệ nhiễu thực tế, collision và mẫu rà soát cho bộ dữ liệu mới.
 - [ ] Hoàn thành rà soát tính tự nhiên và bảo toàn ý định truy vấn của mẫu nhiễu.
-- [ ] Hoàn thành hai pipeline term, stopword/bộ lọc và vocabulary chỉ fit trên corpus.
+- [x] Hoàn thành nhánh word/PyVi, count/TF-IDF và vocabulary chỉ fit trên corpus.
+- [ ] Hoàn thành nhánh character n-gram.
 - [ ] Triển khai VSM TF-IDF/cosine, BM25 và LSI/SVD với cả hai nhánh term.
 - [ ] Chạy đủ 48 lượt đánh giá bằng corpus/qrels và cấu hình đã cố định.
 - [ ] Có MRR@10, nDCG@10, Recall@100, điểm sạch/nhiễu và hai cách tính suy giảm.
 - [ ] Có phân tích theo cặp query, loại/mức nhiễu và cách biểu diễn term.
 - [ ] Báo cáo giới hạn: nhiễu tổng hợp, độ phủ từ điển, qrels và khả năng khái quát ngoài miền pháp lý.
-- [ ] Có hướng dẫn chạy đầy đủ, dependency và quy tắc Git.
+- [x] Có hướng dẫn/dependency chạy phần dữ liệu và word terms.
+- [ ] Bổ sung hướng dẫn chạy retrieval và evaluation khi triển khai xong.
