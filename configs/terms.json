@@ -1,0 +1,16 @@
+{
+  "representation": "word",
+  "segmenter": "pyvi",
+  "unicode_normalization": "NFC",
+  "lowercase": true,
+  "keep_numbers": true,
+  "stopwords": [],
+  "min_df": 1,
+  "max_df": 1.0,
+  "tfidf": {
+    "norm": "l2",
+    "use_idf": true,
+    "smooth_idf": true,
+    "sublinear_tf": false
+  }
+}

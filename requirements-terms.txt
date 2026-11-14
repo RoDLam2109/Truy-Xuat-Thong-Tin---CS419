@@ -1,0 +1,4 @@
+# Python 3.12; phần dữ liệu/term, chưa gồm dependency của retrieval.
+pyvi==0.1.1
+scikit-learn==1.7.2
+datasets==4.4.1
