@@ -4,7 +4,7 @@
 
 Đánh giá mức độ chống chịu của các mô hình truy xuất thông tin khi câu truy vấn tiếng Việt bị nhiễu. Với mỗi mô hình và cách biểu diễn term, lấy kết quả trên query sạch làm điểm chuẩn, chạy các phiên bản query nhiễu, rồi tính **mức suy giảm hiệu năng**.
 
-Dataset chính là **Zalo Legal**. Trong toàn bộ thí nghiệm, chỉ thay đổi câu truy vấn; giữ nguyên corpus, qrels và tập ID truy vấn.
+Dataset đã chốt là **bản Zalo Legal do GreenNode đăng trên Hugging Face**, revision `12d76d4d04b94ceada970fcfbe7fec20bfa97389`. Trong toàn bộ thí nghiệm, chỉ thay đổi câu truy vấn; giữ nguyên corpus, qrels và tập ID truy vấn.
 
 Dự án khảo sát hai yếu tố:
 
@@ -22,6 +22,8 @@ Các câu hỏi nghiên cứu:
 
 Nguồn: [GreenNode/zalo-ai-legal-text-retrieval-vn](https://huggingface.co/datasets/GreenNode/zalo-ai-legal-text-retrieval-vn).
 
+Corpus, query và qrels đều đối chiếu theo cùng revision GreenNode trong `configs/dataset.json`. Giữ đầy đủ nhãn của mỗi query, kể cả query có nhiều tài liệu liên quan; không ghép query/qrels từ bản phân phối khác khi chưa đối chiếu ID và nội dung. Các file nhiễu là biến thể tổng hợp do dự án tạo, không phải dữ liệu lỗi thực do GreenNode cung cấp.
+
 | Thành phần | Đường dẫn | Số lượng hiện tại |
 |---|---|---:|
 | Query sạch (test) | `data/zalo_legal/queries_clean.jsonl` | 788 query, 788 ID duy nhất |
@@ -33,7 +35,19 @@ Nguồn: [GreenNode/zalo-ai-legal-text-retrieval-vn](https://huggingface.co/data
 
 File query ban đầu có 818 dòng; đã bỏ 30 dòng trùng ID có cùng nội dung, giữ lần xuất hiện đầu tiên và thứ tự gốc. Tập test được cố định với **N = 788**.
 
-Qrels hiện có nhãn nhị phân `score = 1`: 783 query có một tài liệu liên quan và 5 query có hai tài liệu liên quan. Mọi ID trong qrels đều có bản ghi query/tài liệu tương ứng.
+Qrels test có nhãn nhị phân `score = 1`: 783 query có một tài liệu liên quan và 5 query có hai tài liệu liên quan. Mọi ID trong qrels đều có bản ghi query/tài liệu tương ứng. Nội dung query test và toàn bộ 793 nhãn đã được đối chiếu khớp với nguồn GreenNode; 788 query sạch cũng khớp thứ tự với query test Parquet nguồn sau khi bỏ 30 dòng trùng ID.
+
+Corpus đã đối chiếu toàn bộ 61.425 ID, tiêu đề, nội dung và thứ tự với `corpus.jsonl` của GreenNode. Nguồn dùng `_id`, repo dùng `id`, nên checksum file khác nhau dù nội dung tài liệu khớp. Có 357 tài liệu có `text` rỗng nhưng `title` không rỗng, 722 dòng dư khi xét trùng cặp `(title, text)` và một tài liệu có ký tự thay thế Unicode `�`; giữ nguyên dữ liệu nguồn, dùng `title + "\n" + text` cho mọi mô hình.
+
+### Kiểm tra lại bản GreenNode đã chốt
+
+```powershell
+.\.venv\Scripts\python.exe -B scripts/check_dataset.py --download
+```
+
+Lệnh chỉ tải nguồn gốc còn thiếu vào `data/zalo_legal/raw/`, kiểm tra SHA-256 theo revision cố định rồi đối chiếu toàn bộ corpus/query/qrels, nhãn nhiều tài liệu, trùng train–test, ID/thứ tự và khả năng tái lập cả bảy tập nhiễu. Không sửa corpus, query, qrels hay noise. Khi có đủ cache, bỏ `--download` để chạy offline. Báo cáo nằm ở `outputs/greennode_audit.json`; khi tất cả kiểm tra đạt, tạo lại `data/zalo_legal/dataset_manifest.json` chứa checksum các file để dùng chung khi chuyển qua Drive. Manifest này phải đi cùng bản dữ liệu đã chốt.
+
+Kiểm tra nguồn/cấu trúc không xác nhận mọi nhãn đều đúng về ngữ nghĩa hoặc mọi câu nhiễu giữ nguyên ý định. Nhóm vẫn cần duyệt mẫu nhiễu, ghi nhận độ phủ phonetic/abbrev thấp và giữ query không đổi trong đánh giá chính. Chỉ sửa quy tắc/sinh lại nhiễu trước khi chốt đánh giá; lưu phiên bản và kết quả rà soát.
 
 ### Query sạch và query nhiễu: JSONL
 
@@ -277,16 +291,19 @@ project/
 ├── scripts/
 │   ├── generate_noise.py          # Đã có
 │   ├── prepare_train.py           # Đã có: tải/kiểm tra query và qrels train
+│   ├── check_dataset.py           # Đã có: đối chiếu nguồn GreenNode và toàn bộ dữ liệu
 │   ├── prepare_data.py            # Dự kiến: chuẩn bị/kiểm tra dữ liệu
 │   ├── build_index.py             # Dự kiến: word/char n-gram, vocabulary, chỉ mục
 │   ├── run_retrieval.py           # Dự kiến: VSM TF-IDF, BM25, LSI/SVD
 │   └── evaluate.py                # Dự kiến: metrics và mức suy giảm
 ├── configs/
 │   ├── noise.json                # Đã có
+│   ├── dataset.json              # Đã có: nguồn, revision, SHA-256 và số lượng đã chốt
 │   └── retrieval.json            # Dự kiến: term, bộ lọc, trọng số, tham số
 ├── tests/
 │   ├── test_generate_noise.py     # Đã có
-│   └── test_prepare_train.py      # Đã có
+│   ├── test_prepare_train.py      # Đã có
+│   └── test_check_dataset.py      # Đã có
 ├── data/
 │   └── zalo_legal/
 │       ├── corpus.jsonl
@@ -295,7 +312,8 @@ project/
 │       ├── queries_train.jsonl
 │       ├── qrels_train.tsv
 │       ├── train_manifest.json
-│       ├── raw/                   # Cache query và nhãn train gốc
+│       ├── dataset_manifest.json  # Checksum bộ dữ liệu để đối chiếu khi chia sẻ
+│       ├── raw/                   # Cache corpus, query và qrels GreenNode gốc
 │       └── noise/
 │           └── queries_*.jsonl    # Bảy điều kiện nhiễu
 ├── outputs/
@@ -303,7 +321,7 @@ project/
 │   └── retrieval/                # Dự kiến: term/model/condition
 ├── README.md
 ├── requirements.txt              # Cần bổ sung
-└── .gitignore                    # Cần bổ sung
+└── .gitignore                    # Đã có: bỏ qua data, outputs, .venv và cache Python
 ```
 
 Các thành phần ghi là dự kiến chưa phải tính năng đã chạy được.

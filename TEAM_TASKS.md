@@ -4,6 +4,8 @@ Dự án: **Evaluating the Robustness of Information Retrieval Models under Nois
 
 Thiết kế chính: **2 cách biểu diễn term × 3 mô hình × 8 điều kiện query = 48 lượt đánh giá**, sử dụng Zalo Legal. Hai biểu diễn là từ tiếng Việt và character n-gram; ba mô hình là VSM TF-IDF/cosine, BM25 và LSI/SVD.
 
+**Nguồn dữ liệu đã chốt:** [GreenNode/zalo-ai-legal-text-retrieval-vn](https://huggingface.co/datasets/GreenNode/zalo-ai-legal-text-retrieval-vn), revision `12d76d4d04b94ceada970fcfbe7fec20bfa97389`. Dùng corpus/query/qrels theo cùng bản này, giữ toàn bộ nhãn liên quan của mỗi query. Các tập nhiễu do dự án sinh riêng. Nguồn/checksum nằm trong `configs/dataset.json`; chạy `scripts/check_dataset.py --download` để đối chiếu.
+
 ## 1. Tổng quan phân công
 
 | Thành viên | Vai trò | Nhánh Git |
@@ -22,7 +24,7 @@ Các file/module chưa có trong repo được liệt kê dưới đây là ph�
 
 - [ ] Viết bước chuẩn bị dữ liệu Zalo Legal có thể chạy lại, gồm query, corpus và qrels.
 - [x] Bổ sung query/qrels train từ nguồn Zalo Legal cố định bằng `scripts/prepare_train.py`: 2.408 query, 2.480 nhãn; đã loại 24 query trùng test và kiểm tra ID tài liệu. Hướng dẫn tái tạo trong README.
-- [ ] Kiểm tra ID trùng, query thiếu qrels và tài liệu được qrels tham chiếu.
+- [x] Kiểm tra ID trùng, query thiếu qrels và tài liệu được qrels tham chiếu cho corpus/train/test/noise; đối chiếu nội dung và đầy đủ nhãn theo GreenNode bằng `scripts/check_dataset.py`.
 - [ ] Xây pipeline `word`: chuẩn hóa → tách từ tiếng Việt → loại stopword → lọc DF/IDF.
 - [ ] Xây pipeline `char_ngram`: chuẩn hóa → tạo character n-gram 3–5 → lọc DF.
 - [ ] Chốt bộ tách từ, stopword, quy tắc n-gram và ngưỡng lọc trong cấu hình.
@@ -36,12 +38,15 @@ Các file/module chưa có trong repo được liệt kê dưới đây là ph�
 ```text
 scripts/prepare_data.py
 scripts/prepare_train.py           # Đã có: bổ sung tập train, kiểm tra trùng test
+scripts/check_dataset.py           # Đã có: kiểm tra toàn bộ bản GreenNode đã chốt
 scripts/build_index.py
 src/terms/
 configs/terms.json
+configs/dataset.json               # Đã có: nguồn/revision/checksum chuẩn
 tests/test_terms.py
 tests/test_prepare_data.py
 tests/test_prepare_train.py        # Đã có
+tests/test_check_dataset.py        # Đã có
 ```
 
 ### Đầu ra bàn giao cho Vũ
@@ -97,7 +102,7 @@ tests/test_retrievers.py
 ### Task
 
 - [ ] Tiếp quản script sinh nhiễu hiện có; rà soát mẫu, quy tắc và độ phủ từ điển.
-- [ ] Kiểm tra bảy tập nhiễu cùng 788 ID và cùng thứ tự với tập sạch.
+- [x] Kiểm tra bảy tập nhiễu cùng 788 ID và cùng thứ tự với tập sạch; sinh lại khớp byte với seed 42.
 - [ ] Tổng hợp tỷ lệ nhiễu thực tế, query không đổi và collision.
 - [ ] Cài MRR@10, nDCG@10 và Recall@100.
 - [ ] Tính suy giảm tuyệt đối và tương đối so với lượt sạch tương ứng.
@@ -134,7 +139,7 @@ Lam là đầu mối tổng hợp `requirements.txt`, `.gitignore`, `README.md` 
 
 ### 5.1. Dữ liệu và biểu diễn
 
-1. Giữ cố định corpus, qrels và tập 788 ID query. File nhiễu nằm trong `data/zalo_legal/noise/`.
+1. Giữ cố định corpus, qrels GreenNode và tập 788 ID query test. File nhiễu nằm trong `data/zalo_legal/noise/`. Khi chia sẻ dữ liệu qua Drive, gửi kèm `dataset_manifest.json` để kiểm tra checksum. Không bỏ bớt nhãn để ép mỗi query chỉ có một tài liệu đúng.
 2. Mọi file query giữ schema `id`, `text`; file nhiễu giữ nguyên ID và thứ tự của file sạch.
 3. Vocabulary, DF/IDF và SVD chỉ fit từ corpus. Query sạch/nhiễu chỉ transform, không thêm term vào vocabulary.
 4. Hàng thứ `i` của mọi ma trận phải tương ứng đúng `doc_ids[i]`. Lưu danh sách ID cùng mỗi bộ biểu diễn.

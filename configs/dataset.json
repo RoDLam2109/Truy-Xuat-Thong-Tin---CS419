@@ -1,0 +1,17 @@
+{
+  "dataset": "GreenNode/zalo-ai-legal-text-retrieval-vn",
+  "revision": "12d76d4d04b94ceada970fcfbe7fec20bfa97389",
+  "source_sha256": {
+    "corpus.jsonl": "b5eb3a054bd29561822b996a1c3207a597ede1aa6e286b9c11876de264c48351",
+    "queries.jsonl": "7cf566b867fbd5cd6428058dea1115593c08c4b0ce0d7b0b00d6b40ae24ee509",
+    "qrels/train.jsonl": "8f21b5bb07a34bd67c6df1c31435feab44986c8be717854f92291faa67329b1f",
+    "qrels/test.jsonl": "ba46b40e07f591409a62c2b6a4e67cb5a0357ef27adb0f89bf8ce68ec723a747"
+  },
+  "expected_counts": {
+    "corpus": 61425,
+    "test_queries": 788,
+    "test_qrels": 793,
+    "train_queries": 2408,
+    "train_qrels": 2480
+  }
+}
