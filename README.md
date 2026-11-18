@@ -24,7 +24,9 @@ Nguồn: [GreenNode/zalo-ai-legal-text-retrieval-vn](https://huggingface.co/data
 
 | Thành phần | Đường dẫn | Số lượng hiện tại |
 |---|---|---:|
-| Query sạch | `data/zalo_legal/queries_clean.jsonl` | 788 query, 788 ID duy nhất |
+| Query sạch (test) | `data/zalo_legal/queries_clean.jsonl` | 788 query, 788 ID duy nhất |
+| Query train | `data/zalo_legal/queries_train.jsonl` | 2.408 query, không trùng ID/nội dung chuẩn hóa với test |
+| Nhãn train | `data/zalo_legal/qrels_train.tsv` | 2.480 quan hệ liên quan |
 | Tập tài liệu | `data/zalo_legal/corpus.jsonl` | 61.425 tài liệu, ID duy nhất |
 | Nhãn liên quan | `data/zalo_legal/qrels_test.tsv` | 793 quan hệ liên quan |
 | Query nhiễu | `data/zalo_legal/noise/queries_*.jsonl` | 7 file, mỗi file 788 query |
@@ -56,6 +58,26 @@ query-id	corpus-id	score
 ```
 
 File có dòng tiêu đề và phân cách bằng tab. `query-id` nối với `queries.id`; `corpus-id` nối với `corpus.id`. ID được xử lý như chuỗi và giữ nguyên mọi ký tự.
+
+### Bổ sung tập train và cách dùng
+
+Tập train được lấy từ `queries.jsonl` và `qrels/train.jsonl` của cùng nguồn Zalo Legal, tại revision `12d76d4d04b94ceada970fcfbe7fec20bfa97389`. Query nguồn dùng `_id`; script chuyển thành `id` để dùng chung schema với test.
+
+Qrels train gốc có 2.432 query và 2.505 nhãn, trong đó **24 query trùng ID với test**. Script loại 24 query cùng 25 nhãn tương ứng, giữ lại **2.408 query và 2.480 nhãn**. Có 2.343 query với một tài liệu liên quan, 58 query với hai tài liệu và 7 query với ba tài liệu. Mọi tài liệu được tham chiếu đều có trong corpus hiện tại. Kiểm tra trùng nội dung dùng Unicode NFC, chữ thường (`casefold`) và gộp khoảng trắng; không có nội dung trùng test còn lại theo quy tắc này.
+
+Tạo dữ liệu từ thư mục gốc dự án:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/prepare_train.py --download
+```
+
+Script chỉ dùng thư viện chuẩn Python; tải hai file còn thiếu vào `data/zalo_legal/raw/`, xác minh SHA-256 rồi kiểm tra query, qrels và ID tài liệu trước khi ghi. Khi đã có cache, có thể chạy offline bằng lệnh trên bỏ `--download`. Các file được tạo lại là `queries_train.jsonl`, `qrels_train.tsv` và `train_manifest.json`; manifest lưu revision, checksum, thống kê và danh sách query bị loại. Corpus và toàn bộ dữ liệu test/nhiễu được giữ nguyên. Thư mục `data/` vẫn được bỏ qua trong Git; các thành viên dùng script để tái tạo dữ liệu.
+
+**VSM TF-IDF, BM25 và LSI/SVD hiện được thiết kế để fit trên corpus, không cần nhãn query để huấn luyện có giám sát.** Tập train dùng cho thử nghiệm, chọn tham số (có thể tách dev riêng từ train) hoặc mô hình có giám sát sau này. Tập 788 query test và bảy phiên bản nhiễu chỉ dùng để đánh giá cuối cùng. Nếu sinh nhiễu cho train, chỉ định qrels và thư mục riêng để giữ đúng dữ liệu của từng tập:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/generate_noise.py --input data/zalo_legal/queries_train.jsonl --qrels data/zalo_legal/qrels_train.tsv --output-dir data/zalo_legal/noise_train --report-dir outputs/noise_train --seed 42
+```
 
 ## 3. Term và hai cách biểu diễn
 
@@ -246,7 +268,7 @@ Không dùng tập test để chọn tham số hay sửa quy tắc dựa trên �
 
 ## 9. Trạng thái triển khai và cấu trúc repo
 
-**Đã có:** dữ liệu Zalo Legal, query sạch đã loại trùng, bảy file nhiễu, cấu hình sinh nhiễu, log/thống kê/mẫu rà soát và kiểm tra tự động cho phần sinh nhiễu.
+**Đã có:** dữ liệu Zalo Legal, query test sạch đã loại trùng, tập train/query/qrels cùng script tái tạo và kiểm tra trùng test, bảy file nhiễu test, cấu hình sinh nhiễu, log/thống kê/mẫu rà soát và kiểm tra tự động cho phần sinh nhiễu.
 
 **Cần triển khai:** hai pipeline term, vocabulary và chỉ mục, ba mô hình truy xuất, module đánh giá, bảng/biểu đồ mức suy giảm và phân tích lỗi. Các quy tắc nhiễu hiện cần tiếp tục rà soát thủ công.
 
@@ -254,6 +276,7 @@ Không dùng tập test để chọn tham số hay sửa quy tắc dựa trên �
 project/
 ├── scripts/
 │   ├── generate_noise.py          # Đã có
+│   ├── prepare_train.py           # Đã có: tải/kiểm tra query và qrels train
 │   ├── prepare_data.py            # Dự kiến: chuẩn bị/kiểm tra dữ liệu
 │   ├── build_index.py             # Dự kiến: word/char n-gram, vocabulary, chỉ mục
 │   ├── run_retrieval.py           # Dự kiến: VSM TF-IDF, BM25, LSI/SVD
@@ -262,12 +285,17 @@ project/
 │   ├── noise.json                # Đã có
 │   └── retrieval.json            # Dự kiến: term, bộ lọc, trọng số, tham số
 ├── tests/
-│   └── test_generate_noise.py     # Đã có
+│   ├── test_generate_noise.py     # Đã có
+│   └── test_prepare_train.py      # Đã có
 ├── data/
 │   └── zalo_legal/
 │       ├── corpus.jsonl
 │       ├── qrels_test.tsv
 │       ├── queries_clean.jsonl
+│       ├── queries_train.jsonl
+│       ├── qrels_train.tsv
+│       ├── train_manifest.json
+│       ├── raw/                   # Cache query và nhãn train gốc
 │       └── noise/
 │           └── queries_*.jsonl    # Bảy điều kiện nhiễu
 ├── outputs/

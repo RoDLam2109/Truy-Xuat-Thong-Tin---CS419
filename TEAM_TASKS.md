@@ -21,6 +21,7 @@ Các file/module chưa có trong repo được liệt kê dưới đây là ph�
 ### Task
 
 - [ ] Viết bước chuẩn bị dữ liệu Zalo Legal có thể chạy lại, gồm query, corpus và qrels.
+- [x] Bổ sung query/qrels train từ nguồn Zalo Legal cố định bằng `scripts/prepare_train.py`: 2.408 query, 2.480 nhãn; đã loại 24 query trùng test và kiểm tra ID tài liệu. Hướng dẫn tái tạo trong README.
 - [ ] Kiểm tra ID trùng, query thiếu qrels và tài liệu được qrels tham chiếu.
 - [ ] Xây pipeline `word`: chuẩn hóa → tách từ tiếng Việt → loại stopword → lọc DF/IDF.
 - [ ] Xây pipeline `char_ngram`: chuẩn hóa → tạo character n-gram 3–5 → lọc DF.
@@ -34,11 +35,13 @@ Các file/module chưa có trong repo được liệt kê dưới đây là ph�
 
 ```text
 scripts/prepare_data.py
+scripts/prepare_train.py           # Đã có: bổ sung tập train, kiểm tra trùng test
 scripts/build_index.py
 src/terms/
 configs/terms.json
 tests/test_terms.py
 tests/test_prepare_data.py
+tests/test_prepare_train.py        # Đã có
 ```
 
 ### Đầu ra bàn giao cho Vũ
@@ -138,6 +141,7 @@ Lam là đầu mối tổng hợp `requirements.txt`, `.gitignore`, `README.md` 
 5. Trong cùng nhánh term, dùng chung vocabulary đã lọc cho ba mô hình; trọng số được tính theo từng phương pháp.
 6. Phân biệt term truy xuất với token đo tỷ lệ nhiễu. Sinh nhiễu trên văn bản trước bước biểu diễn term; hai nhánh nhận cùng câu query.
 7. Không chỉnh tham số hoặc quy tắc dựa trên điểm test. Tham số được chốt trước hoặc chọn bằng tập dev riêng.
+   Có sẵn `queries_train.jsonl` và `qrels_train.tsv` để phát triển/chọn tham số; khi cần dev, tách từ train. VSM/BM25/LSI vẫn fit vocabulary, DF/IDF và SVD từ corpus. Không đưa 788 query test hoặc các phiên bản nhiễu test vào train/dev.
 8. Đổi giao diện phải báo người dùng module và thống nhất tên hàm, tham số, kiểu dữ liệu trả về trước khi sửa.
 
 ### 5.2. Đầu ra truy xuất
