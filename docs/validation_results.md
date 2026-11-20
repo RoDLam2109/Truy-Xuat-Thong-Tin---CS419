@@ -48,3 +48,35 @@ data governance.
 These are fixed-parameter baselines, NOT tuned best configurations.
 No final test evaluation was performed for this report. The synthetic noise
 generator may change the query semantics; inspect samples before publication.
+
+
+## Character n-gram VSM (full corpus, measured)
+
+The full char index has 61,425 documents, 111,181 features and
+44,687,991 nonzero count-matrix entries. These numbers are **full validation**
+results, NOT the 400-document smoke experiment.
+
+| Query condition | Word VSM nDCG@10 | Char VSM nDCG@10 |
+|---|---:|---:|
+| clean | 0.5008 | 0.4833 |
+| no_diacritics | 0.0209 | 0.0219 |
+| telex_typo | 0.3263 | 0.4216 |
+| phonetic | 0.4925 | 0.4803 |
+| abbrev | 0.5004 | 0.4785 |
+| mixed_low | 0.4198 | 0.4528 |
+| mixed_medium | 0.3119 | 0.3996 |
+| mixed_high | 0.2284 | 0.3542 |
+
+Character n-grams improve VSM for Telex and mixed noise, but their
+no-diacritics score remains near zero. Simply switching to char n-grams does
+not solve accent removal: candidate generation still depends on overlap
+between accented corpus and unaccented query grams.
+
+Results are preserved in outputs/retrieval/val_char_full/progress.json:
+8/8 VSM conditions completed. Full-corpus char BM25 and char LSI have
+**not** been benchmarked; their 16 cells remain pending. The resource-intensive
+process was stopped after saving VSM progress, so no residual computation is
+left running. The evaluation code supports the remaining experiments,
+but this document deliberately does not invent their scores.
+
+All final test results remain uncomputed; select configurations on validation.
