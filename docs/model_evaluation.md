@@ -1,6 +1,6 @@
 # Thiết kế thí nghiệm và hướng dẫn đánh giá
 
-Tài liệu kỹ thuật cho phần retrieval/evaluation. Tổng quan dự án và kết quả chính được trình bày tại [README](../README.md); bảng kết quả thực nghiệm ở [validation_results.md](validation_results.md).
+Tài liệu kỹ thuật cho phần retrieval/evaluation. Kết quả thực nghiệm và trạng thái từng mô hình được ghi trong [validation_results.md](validation_results.md).
 
 ## 1. Thiết kế dữ liệu
 

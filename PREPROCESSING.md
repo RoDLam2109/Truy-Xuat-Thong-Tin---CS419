@@ -1,60 +1,65 @@
-# Tiền xử lý và biểu diễn văn bản
+# Chọn term và chuẩn hóa dữ liệu
 
-Mã nguồn: [scripts/prepare_terms.py](scripts/prepare_terms.py). Cấu hình: [configs/terms.json](configs/terms.json). Đầu vào là corpus và queries đã chuẩn hóa trong `data/zalo_legal/`.
+Dữ liệu chính: **Lam v1**, tại `data/zalo_legal/`.
+Code: `scripts/prepare_terms.py`. Cấu hình: `configs/terms.json`.
 
-## Chuẩn hóa văn bản
+## Chuẩn hóa chung
 
-- Tài liệu: nối `title` và `text`, sau đó chuẩn hóa Unicode NFC, chuyển chữ thường và gộp khoảng trắng.
-- Query sạch và query nhiễu được chuẩn hóa tương tự. Giữ nguyên dấu tiếng Việt, chữ số và dấu câu; không tự sửa lỗi gõ hoặc khôi phục dấu.
-- ID, thứ tự dòng và qrels không bị thay đổi. Script ghi kết quả vào `outputs/processed/`, không ghi đè dữ liệu nguồn.
+- Corpus: ghép `title` và `text`, rồi chuẩn hóa.
+- Corpus, query train, test gốc và cả 7 test nhiễu: Unicode NFC → chữ thường → gộp khoảng trắng.
+- Giữ dấu tiếng Việt, số và dấu câu trong văn bản chuẩn hóa. Không sửa chính tả hay khôi phục dấu của query nhiễu.
+- Giữ nguyên ID, thứ tự dòng, cách chia train/test và qrels. Dữ liệu gốc không bị ghi đè.
 
-## Hai cách biểu diễn
+## Hai cách chọn term
 
-**Kết quả của bước chọn term:** pipeline hiện tạo được hai vocabulary (Word và Character n-gram) bằng cách lọc DF từ corpus. Đây là hai phương án để đưa sang Model Evaluation; chưa thực hiện thí nghiệm chọn một biểu diễn tốt nhất. Xem [README.md](README.md) để biết kết quả của từng mô hình trên hai biểu diễn.
-
-| Biểu diễn | Cách tách term | Vocabulary |
+| Nhánh | Cách tạo term | Lý do chọn |
 |---|---|---|
-| `word` | PyVi 0.1.1; từ ghép nối bằng `_`; loại token chỉ chứa dấu câu | 16.498 term |
-| `char_ngram` | N-gram 3–5 ký tự trong từng đơn vị ngăn bởi khoảng trắng; thêm dấu cách ở hai biên | 111.181 term |
+| `word` | Tách từ bằng PyVi 0.1.1; từ ghép có dấu `_`; bỏ token chỉ có dấu câu | Baseline khớp từ, dễ giải thích |
+| `char_ngram` | Chuỗi ký tự dài 3–5, trên từng đơn vị cách trắng, thêm một dấu cách ở hai biên | Kiểm tra khả năng giữ khớp từng phần khi sai ký tự |
 
-Ví dụ với `phạt`, nhánh char tạo các đoạn như ` ph`, `phạ`, `hạt`, `ạt `. N-gram không đi xuyên qua ranh giới giữa hai đơn vị cách trắng.
+Ví dụ, `phạt` có các n-gram như ` ph`, `phạ`, `hạt`, `ạt `. N-gram không đi xuyên qua khoảng trắng giữa hai từ; giữ dấu câu trong đơn vị gốc và không tách từ bằng PyVi ở nhánh này.
 
-Nhánh word bỏ 5 stopword: `và`, `là`, `của`, `các`, `những`. Vẫn giữ số và những từ có thể làm thay đổi nghĩa pháp lý như `không`, `chưa`, `được`, `phải`. Nhánh character n-gram không bỏ stopword.
+Nhánh word loại đúng 5 stopword: `và`, `là`, `của`, `các`, `những`. Giữ các từ có thể đổi nghĩa pháp lý như `không`, `chưa`, `được`, `phải`, và giữ số. Nhánh char không loại stopword.
 
-**Chọn vocabulary:** tính document frequency (DF) chỉ trên corpus; giữ term có DF ít nhất 2 và xuất hiện ở không quá 95% tài liệu (`min_df=2`, `max_df=0.95`). DF là số tài liệu chứa term, khác với term frequency (TF) là số lần term xuất hiện. Ngưỡng này là baseline cố định, chưa tối ưu theo validation.
+Cả hai nhánh chọn vocabulary **chỉ từ corpus**: giữ term xuất hiện trong ít nhất 2 tài liệu và không quá 95% số tài liệu (`min_df=2`, `max_df=0.95`). DF đếm số tài liệu chứa term, không đếm số lần lặp trong cùng tài liệu. Đây là ngưỡng ban đầu; chưa tối ưu bằng validation. Không dùng điểm test để chọn term.
 
-## Artifact đầu ra
-
-```text
-outputs/processed/
-├── corpus.jsonl
-├── queries_train.jsonl
-├── queries_clean.jsonl
-├── noise/queries_*.jsonl
-├── qrels_train.tsv
-├── qrels_test.tsv
-├── vocabulary_word.json
-├── vocabulary_char_ngram.json
-├── summary.json
-└── config_used.json
-```
-
-Các file JSONL xử lý chứa `id`, `text`, `word_terms`. `word_terms` giữ tần suất lặp; chưa bị lọc theo DF. Vocabulary lưu `term → DF`. Khi xây dựng ma trận Count/TF-IDF, `scripts/build_retrieval_index.py` đọc vocabulary và chỉ giữ các term có mặt trong đó; nhánh char được tạo trực tiếp từ `text` để tránh lưu lượng lớn n-gram trong JSONL.
-
-## Số liệu đã xác minh
-
-| Chỉ số | Word | Character n-gram |
-|---|---:|---:|
-| Term trước lọc DF | 26.143 | 195.945 |
-| Term sau lọc DF | **16.498** | **111.181** |
-
-Đã chạy preprocessing trên **61.425 tài liệu**, **2.408 train queries**, **788 test queries** và 7 bộ test noise (788 query/bộ). Đã xây dựng index đầy đủ cho cả hai nhánh. Ma trận count và TF-IDF được tạo ở bước riêng, **chỉ fit từ corpus**; xem [docs/model_evaluation.md](docs/model_evaluation.md).
-
-Chạy riêng bước tiền xử lý:
+## Chạy và sử dụng kết quả
 
 ```bash
 uv sync --locked
-uv run python -X utf8 scripts/prepare_terms.py --workers 4
+uv run python scripts/prepare_terms.py
 ```
 
-`--workers 1` phù hợp khi cần hạn chế tài nguyên. Output lớn và được bỏ qua bởi Git. [PyVi](https://github.com/trungtv/pyvi) là thư viện tách từ được sử dụng.
+Có thể thêm `--workers 8` để tách từ song song, hoặc `--workers 1` nếu ít RAM.
+
+Kết quả ở `outputs/processed/`:
+
+- Corpus và query JSONL: mỗi dòng gồm `id`, `text` đã chuẩn hóa, `word_terms` đã tách từ/bỏ stopword nhưng **chưa lọc theo DF**.
+- `vocabulary_word.json`, `vocabulary_char_ngram.json`: ánh xạ term → DF sau lọc; hai vocabulary độc lập.
+- Qrels train/test được sao chép nguyên vẹn; `summary.json` ghi số dòng, kích thước vocabulary, cấu hình và hash dữ liệu đầu vào.
+
+Khi tạo ma trận count hoặc TF-IDF, dùng `terms_for` để lọc theo vocabulary. Hàm giữ số lần lặp term, cần thiết cho TF và BM25:
+
+```python
+import json
+from scripts.prepare_terms import terms_for
+
+vocabulary = json.load(open("outputs/processed/vocabulary_word.json"))
+with open("outputs/processed/queries_clean.jsonl") as f:
+    row = json.loads(next(f))
+terms = terms_for(row, "word", vocabulary)
+```
+
+Với nhánh char, nạp vocabulary char và gọi `terms_for(row, "char_ngram", vocabulary)`. Char term được sinh khi dùng, không ghi toàn bộ ra JSONL để tránh phình dung lượng. Không fit lại vocabulary theo query. Query không còn term sau lọc vẫn được giữ để đánh giá.
+
+Phần này chưa tạo ma trận count/TF-IDF, chưa huấn luyện model và chưa chia validation.
+
+Nguồn bộ tách từ: [PyVi](https://github.com/trungtv/pyvi).
+
+## Kết quả đã chạy trên toàn bộ dữ liệu
+
+- Corpus: 61.425 tài liệu; train: 2.408 query; test gốc: 788 query; 7 test nhiễu, mỗi file 788 query.
+- Vocabulary word: **16.498 term** (trước lọc: 26.143).
+- Vocabulary char n-gram: **111.181 term** (trước lọc: 195.945).
+- Đã đối chiếu ID, thứ tự, văn bản chuẩn hóa của toàn bộ 70.137 dòng; hash dữ liệu gốc và qrels không đổi.
+- 13 kiểm tra tự động pass (`uv run python -B -m unittest discover -s tests -v`).

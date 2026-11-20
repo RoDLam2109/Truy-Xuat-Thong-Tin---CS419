@@ -4,7 +4,7 @@
 
 **Tiến độ:** **32/48 cấu hình** đã chạy thành công trên full corpus: 24 cấu hình word (VSM, BM25, LSI) và 8 cấu hình character n-gram (VSM). Chưa có kết quả full-corpus cho character n-gram BM25 hoặc LSI; chưa chạy test cuối cùng.
 
-**Trạng thái Model Selection:** mới so sánh các baseline với tham số cố định; **chưa lựa chọn mô hình cuối cùng**. Word + BM25 dẫn đầu trên query clean trong các cấu hình đã chạy, còn character n-gram + VSM cải thiện độ chịu nhiễu Telex và mixed noise so với word + VSM. Để xem rõ danh sách 6 tổ hợp model/term và trạng thái từng tổ hợp, đọc [README.md](../README.md).
+**Trạng thái Model Selection:** mới so sánh các baseline với tham số cố định; **chưa lựa chọn mô hình cuối cùng**. Word + BM25 dẫn đầu trên query clean trong các cấu hình đã chạy, còn character n-gram + VSM cải thiện độ chịu nhiễu Telex và mixed noise so với word + VSM. Trong tổng số 6 tổ hợp model/term, 4 tổ hợp đã được đánh giá đủ 8 điều kiện: Word + VSM, Word + BM25, Word + LSI và Character n-gram + VSM. Hai tổ hợp còn lại là Character n-gram + BM25 và Character n-gram + LSI (chưa chạy full-corpus).
 
 ## 1. nDCG@10 theo loại nhiễu
 
