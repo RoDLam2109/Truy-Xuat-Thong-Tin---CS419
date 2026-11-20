@@ -10,6 +10,8 @@ Mã nguồn: [scripts/prepare_terms.py](scripts/prepare_terms.py). Cấu hình: 
 
 ## Hai cách biểu diễn
 
+**Kết quả của bước chọn term:** pipeline hiện tạo được hai vocabulary (Word và Character n-gram) bằng cách lọc DF từ corpus. Đây là hai phương án để đưa sang Model Evaluation; chưa thực hiện thí nghiệm chọn một biểu diễn tốt nhất. Xem [README.md](README.md) để biết kết quả của từng mô hình trên hai biểu diễn.
+
 | Biểu diễn | Cách tách term | Vocabulary |
 |---|---|---|
 | `word` | PyVi 0.1.1; từ ghép nối bằng `_`; loại token chỉ chứa dấu câu | 16.498 term |
