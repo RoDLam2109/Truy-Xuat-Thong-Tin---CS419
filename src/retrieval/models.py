@@ -1,6 +1,6 @@
-"""IR retrieval models. Fit on the corpus only; never use qrels for fitting.
+"""Retrieval models using corpus-derived features.
 
-All document/query representations must share the teammate's TermIndex vocabulary.
+Document and query matrices must share the stored vocabulary and weighting.
 """
 from __future__ import annotations
 

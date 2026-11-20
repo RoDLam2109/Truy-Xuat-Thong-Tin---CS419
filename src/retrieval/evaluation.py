@@ -1,4 +1,4 @@
-"""Evaluation of full-corpus top-k ranked retrieval with fixed test qrels."""
+"""Evaluate ranked retrieval against positive qrels from the selected split."""
 from __future__ import annotations
 
 import math

@@ -1,4 +1,4 @@
-"""Build a corpus-only sparse index from main's prepared word/char terms."""
+"""Build word or character n-gram sparse indexes from processed corpus."""
 from __future__ import annotations
 
 import argparse

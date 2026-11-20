@@ -1,7 +1,7 @@
-"""Evaluate corpus-fitted VSM/BM25/LSI using main's word/char terms.
+"""Evaluate VSM, BM25 and LSI with word/character n-gram representations.
 
-Default = independent validation split. Final test needs explicit confirmation.
-This script NEVER fits vocabulary, IDF or SVD to queries or qrels.
+Validation is the default split; test evaluation requires explicit confirmation.
+Vocabulary, IDF and SVD are fitted on corpus data, not relevance labels.
 """
 from __future__ import annotations
 

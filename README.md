@@ -1,59 +1,87 @@
 # Evaluating the Robustness of Information Retrieval Models under Noisy Vietnamese Queries
 
-## 1. Mục tiêu dự án
+Đồ án môn **Truy xuất thông tin (CS419)**: so sánh chất lượng truy xuất và mức suy giảm hiệu năng của VSM, BM25, LSI khi câu truy vấn tiếng Việt bị nhiễu. Thí nghiệm sử dụng hai cách biểu diễn văn bản — **word** và **character n-gram** — trên cùng tập văn bản pháp luật.
 
-Đánh giá mức độ chống chịu của các mô hình truy xuất thông tin khi câu truy vấn tiếng Việt bị nhiễu. Với mỗi mô hình và cách biểu diễn term, lấy kết quả trên query sạch làm điểm chuẩn, chạy các phiên bản query nhiễu, rồi tính **mức suy giảm hiệu năng**.
+**Trạng thái hiện tại:** đã chạy **32/48 cấu hình** trên toàn bộ corpus và tập validation. Chưa đánh giá test cuối cùng.
 
-Dataset đã chốt là **bản Zalo Legal do GreenNode đăng trên Hugging Face**, revision `12d76d4d04b94ceada970fcfbe7fec20bfa97389`. Trong toàn bộ thí nghiệm, chỉ thay đổi câu truy vấn; giữ nguyên corpus, qrels và tập ID truy vấn.
+## Dữ liệu và cách chia tập
 
-Dự án khảo sát hai yếu tố:
+Dữ liệu sử dụng: [GreenNode/zalo-ai-legal-text-retrieval-vn](https://huggingface.co/datasets/GreenNode/zalo-ai-legal-text-retrieval-vn), đã chuẩn hóa và kiểm tra trùng lặp train/test. Revision và SHA-256 được lưu trong [configs/dataset.json](configs/dataset.json) và [train_manifest.json](data/zalo_legal/train_manifest.json).
 
-1. **Cách biểu diễn term:** từ tiếng Việt và character n-gram.
-2. **Mô hình truy xuất:** VSM với TF-IDF/cosine similarity, BM25 và LSI/SVD.
+| Thành phần | Queries | Qrels | Ghi chú |
+|---|---:|---:|---|
+| Corpus | — | — | 61.425 tài liệu, dùng chung cho mọi split |
+| Train chuẩn hóa | 2.408 | 2.480 | Đã loại 24 query IDs trùng test |
+| Development train | 1.926 | 1.985 | Tách từ train chuẩn hóa, seed 42 |
+| Validation | 482 | 495 | Dùng chọn tham số và đánh giá trong quá trình phát triển |
+| Test | 788 | 793 | Giữ nguyên để đánh giá cuối cùng |
 
-Các câu hỏi nghiên cứu:
+Train/validation được chia theo nhóm nội dung query chuẩn hóa, tránh một query xuất hiện ở cả hai tập. Mỗi điều kiện validation có cùng 482 query IDs và cùng 495 qrels. Corpus không bị chia nhỏ và không thêm nhiễu.
 
-- Mỗi mô hình suy giảm bao nhiêu so với điểm sạch khi query có từng loại lỗi?
-- Mức suy giảm thay đổi thế nào khi mức nhiễu hỗn hợp tăng?
-- Biểu diễn bằng character n-gram có giảm tác động của lỗi ký tự so với biểu diễn bằng từ tiếng Việt không?
-- Mô hình nào cân bằng tốt giữa chất lượng truy xuất và khả năng chống chịu nhiễu?
+Bảy điều kiện nhiễu tổng hợp: `no_diacritics`, `telex_typo`, `phonetic`, `abbrev`, `mixed_low`, `mixed_medium`, `mixed_high`. Điều kiện `clean` dùng query chưa được thêm nhiễu.
 
-## 2. Dữ liệu và schema
+Xem [cấu trúc dữ liệu và hướng dẫn chuẩn bị](data/README.md).
 
-Dataset chính: **bản Lam v1**, đặt tại `data/zalo_legal/`. Nguồn: [GreenNode/zalo-ai-legal-text-retrieval-vn](https://huggingface.co/datasets/GreenNode/zalo-ai-legal-text-retrieval-vn), revision `12d76d4d04b94ceada970fcfbe7fec20bfa97389`.
+## Phương pháp
 
-Chi tiết nguồn, số lượng và SHA-256: [train_manifest.json](data/zalo_legal/train_manifest.json). Hướng dẫn chia sẻ dữ liệu: [data/README.md](data/README.md).
+| Thành phần | Thiết lập |
+|---|---|
+| Word | Tách từ bằng PyVi; giữ dấu, số và từ phủ định |
+| Character n-gram | N-gram 3–5 ký tự trong từng token |
+| Vocabulary | Xây dựng từ corpus; `min_df=2`, `max_df=0.95` |
+| VSM | TF-IDF + cosine similarity |
+| BM25 | `k1=1.2`, `b=0.75` |
+| LSI | TruncatedSVD, 64 chiều, seed 42 |
+| Chỉ số | MRR@10, nDCG@10, Recall@100 và mức suy giảm so với clean |
 
-Corpus, query và qrels đều đối chiếu theo cùng revision GreenNode trong `configs/dataset.json`. Giữ đầy đủ nhãn của mỗi query, kể cả query có nhiều tài liệu liên quan; không ghép query/qrels từ bản phân phối khác khi chưa đối chiếu ID và nội dung. Các file nhiễu là biến thể tổng hợp do dự án tạo, không phải dữ liệu lỗi thực do GreenNode cung cấp.
+Vocabulary, IDF và phép chiếu SVD được fit **chỉ từ corpus**; qrels không được dùng để fit các mô hình này. Các tham số trên là baseline cố định, chưa phải cấu hình tối ưu. Chi tiết preprocessing nằm trong [PREPROCESSING.md](PREPROCESSING.md); thiết kế đánh giá và lệnh chạy lại nằm trong [docs/model_evaluation.md](docs/model_evaluation.md).
 
-| Thành phần | Đường dẫn | Số lượng hiện tại |
-|---|---|---:|
-| Query sạch (test) | `data/zalo_legal/queries_clean.jsonl` | 788 query, 788 ID duy nhất |
-| Query train | `data/zalo_legal/queries_train.jsonl` | 2.408 query, không trùng ID/nội dung chuẩn hóa với test |
-| Nhãn train | `data/zalo_legal/qrels_train.tsv` | 2.480 quan hệ liên quan |
+## Kết quả validation
 
+**nDCG@10**, đánh giá trên 482 queries và toàn bộ 61.425 documents.
 
-## 3. Development / evaluation (branch feature/model-evaluation)
+| Điều kiện | Word VSM | Word BM25 | Word LSI | Char VSM |
+|---|---:|---:|---:|---:|
+| Clean | 0.5008 | **0.6626** | 0.2420 | 0.4833 |
+| No diacritics | 0.0209 | **0.0297** | 0.0019 | 0.0219 |
+| Telex typo | 0.3263 | **0.4725** | 0.1376 | 0.4216 |
+| Phonetic | 0.4925 | **0.6511** | 0.2325 | 0.4803 |
+| Abbreviation | 0.5004 | **0.6589** | 0.2358 | 0.4785 |
+| Mixed low | 0.4198 | **0.5875** | 0.1914 | 0.4528 |
+| Mixed medium | 0.3119 | **0.4698** | 0.1204 | 0.3996 |
+| Mixed high | 0.2284 | **0.3534** | 0.0803 | 0.3542 |
 
-The canonical Lam v1 files remain unchanged. From GreenNode's 2,408 train queries,
-the deterministic text-group split (seed 42) produces **1,926 development train**
-and **482 validation** queries (1,985 and 495 qrels), with seven synthetic
-validation noise sets. **Test remains 788 queries/793 qrels** and is not used
-for hyperparameter tuning.
+**Nhận xét:** BM25 word đạt điểm clean cao nhất trong các cấu hình đã chạy (nDCG@10 = 0.6626). Character n-gram cải thiện VSM khi gặp lỗi Telex (0.4216 so với 0.3263) và nhiễu hỗn hợp nặng (0.3542 so với 0.2284), nhưng gần như không xử lý được trường hợp bỏ dấu. MRR@10, Recall@100 và đầy đủ kết quả được ghi trong [docs/validation_results.md](docs/validation_results.md).
 
-The model pipeline reuses PREPROCESSING.md and scripts/prepare_terms.py from main:
-two term representations (word and character n-gram) x VSM / BM25 / LSI,
-each under clean + 7 noise conditions. Only corpus-derived vocab and IDF are used.
+**Tiến độ:** word VSM/BM25/LSI **24/24**; character n-gram VSM **8/8**; character n-gram BM25 và LSI **0/16**. Tổng cộng **32/48**. Chưa có số liệu test cuối cùng.
 
-Run in this order (see docs/model_evaluation.md for details):
+## Chạy lại
 
-    python -m uv sync --locked
-    python -X utf8 scripts/prepare_train.py --download
-    python -X utf8 scripts/prepare_validation.py
-    python -X utf8 scripts/prepare_terms.py --workers 4
-    python -X utf8 scripts/build_retrieval_index.py --branch word --output-dir outputs/index/word
-    python -X utf8 scripts/evaluate_models.py --index-dir outputs/index/word --output-dir outputs/retrieval/val_word
+Cần **Python 3.11+**, [uv](https://docs.astral.sh/uv/) và bộ dữ liệu nhóm đã chuẩn bị. Clone repository **không kèm corpus và các query JSONL**: tải folder dữ liệu từ [Google Drive của nhóm](https://drive.google.com/drive/folders/1fdZjJ1i7o44f3jNwbZL2okPxKcNfkv7H) vào `data/zalo_legal/` trước khi chạy.
 
-The test must not be used for selecting parameters. All generated data,
-indices, validation noise and experiment results live under git-ignored outputs/.
-Every index and run is bound to the input SHA-256 in its metadata.
+Chạy trong thư mục gốc repository:
+
+```bash
+uv sync --locked
+uv run python -X utf8 scripts/prepare_validation.py
+uv run python -X utf8 scripts/prepare_terms.py --workers 4
+uv run python -X utf8 scripts/build_retrieval_index.py --branch word --output-dir outputs/index/word
+uv run python -X utf8 scripts/evaluate_models.py --index-dir outputs/index/word --output-dir outputs/retrieval/val_word
+```
+
+Để thử nghiệm character n-gram, thay `word` bằng `char_ngram` ở bước xây dựng index và truyền đường dẫn index tương ứng khi đánh giá. Lệnh kiểm tra unit tests:
+
+```bash
+uv run python -m unittest discover -s tests -q
+```
+
+Các script tạo split, index và kết quả đánh giá không ghi đè thư mục đầu ra đã tồn tại. Muốn chạy lại, chọn thư mục đầu ra mới hoặc chủ động dọn artifact cũ. Tất cả artifact trong `outputs/` được bỏ qua bởi Git; xem [hướng dẫn chạy và kiểm tra dữ liệu](docs/model_evaluation.md).
+
+## Giới hạn và công việc tiếp theo
+
+- Hoàn thành **16 cấu hình validation** còn thiếu: BM25 và LSI trên character n-gram.
+- Phân tích lỗi bỏ dấu, đánh giá các cải tiến trên **validation** trước khi sử dụng test.
+- Kiểm tra thủ công một số mẫu nhiễu vì phép biến đổi tổng hợp có thể làm thay đổi nghĩa câu hỏi.
+- Chỉ báo cáo test sau khi chốt mô hình và tham số. Tập test từng được khảo sát trong giai đoạn trước, vì vậy không mô tả đây là một test set hoàn toàn chưa từng được xem.
+
+Mã nguồn, phương pháp và kết quả hiện có được trình bày ở đây; các số liệu chưa đo không được suy diễn từ smoke test.

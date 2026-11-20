@@ -1,7 +1,6 @@
-"""Sparse count / TF-IDF representations fitted exclusively on the corpus.
+"""Sparse term-count and TF-IDF matrices from corpus-derived vocabulary.
 
-Consumed inputs come from main's scripts/prepare_terms.py, not the legacy
-TermIndex pipeline. A single term-to-column mapping serves all query variants.
+The same vocabulary mapping and corpus IDF are reused for every query variant.
 """
 from __future__ import annotations
 
@@ -15,7 +14,7 @@ from scipy import sparse
 from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.preprocessing import normalize
 
-from scripts.prepare_terms import char_terms, normalize as clean_text, word_terms, terms_for
+from scripts.prepare_terms import char_terms, normalize as clean_text, word_terms
 
 
 def load_vocabulary(path):

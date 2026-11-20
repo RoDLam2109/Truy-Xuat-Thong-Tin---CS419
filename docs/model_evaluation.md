@@ -1,95 +1,110 @@
-# Model evaluation on GreenNode Lam v1
+# Thiết kế thí nghiệm và hướng dẫn đánh giá
 
-## Source of truth and leakage policy
+Tài liệu kỹ thuật cho phần retrieval/evaluation. Tổng quan dự án và kết quả chính được trình bày tại [README](../README.md); bảng kết quả thực nghiệm ở [validation_results.md](validation_results.md).
 
-- Canonical dataset: GreenNode Lam v1, revision 12d76d4d04b94ceada970fcfbe7fec20bfa97389,
-  stored in data/zalo_legal (not tracked in Git). Verification:
-  data/zalo_legal/train_manifest.json and configs/dataset.json.
-- Corpus: 61,425 documents, common to every split.
-- Canonical train: 2,408 query IDs and 2,480 qrels; multiple positive documents
-  for a query are preserved. Canonical test: 788 query IDs and 793 qrels.
-- Train was cleaned by teammate's scripts/prepare_train.py. The 24
-  overlapping query IDs and 25 qrels are removed reproducibly.
-- Never fit vocabulary, IDF or SVD using query relevance labels.
-  Fit vocabulary only on corpus with scripts/prepare_terms.py.
-- Never tune hyperparameters on test. Default evaluation is validation;
-  final test requires --confirm-test-use.
+## 1. Thiết kế dữ liệu
 
-## Development split
+Dữ liệu đầu vào là bộ Zalo Legal được nhóm chuẩn hóa từ GreenNode; revision và SHA-256 nằm trong [configs/dataset.json](../configs/dataset.json). Corpus gồm **61.425 documents**, dùng chung cho train, validation và test.
 
-Run scripts/prepare_validation.py on canonical TRAIN ONLY, seed 42, group
-by NFC+casefold+collapsed-whitespace query text. Actual output:
+| Split | Queries | Qrels | Mục đích |
+|---|---:|---:|---|
+| Train chuẩn hóa | 2.408 | 2.480 | Nguồn để tạo development split |
+| Development train | 1.926 | 1.985 | Dành cho các hướng có supervised training trong tương lai |
+| Validation | 482 | 495 | So sánh mô hình, chọn tham số |
+| Test | 788 | 793 | Đánh giá sau khi chốt cấu hình |
 
-| Partition | Queries | Qrels |
-|---|---:|---:|
-| Development train | 1,926 | 1,985 |
-| Validation | 482 | 495 |
+`scripts/prepare_validation.py` tạo train/validation từ **train chuẩn hóa**, không lấy query test. Seed = 42; các query có cùng nội dung sau Unicode NFC, casefold và chuẩn hóa khoảng trắng được xếp chung một split. Tất cả qrels của một query được giữ nguyên, kể cả query có nhiều tài liệu liên quan.
 
-Query IDs and normalized query text are disjoint across development train,
-validation and fixed test. The 7 validation noisy variants are generated using
-the existing noise generator/config and seed 42, without modifying canonical
-train/test. Split, validation noise and reports live in outputs/splits/seed42.
-Keep split IDs fixed across all experiments.
+Bảy tập validation noise được sinh từ 482 query sạch của validation; giữ nguyên query IDs, thứ tự và qrels. Test và noise của test không thay đổi.
 
-## Representations and models
+## 2. Biểu diễn và mô hình
 
-The preprocessing script from main creates processed corpus and two vocabularies:
+| Thành phần | Cấu hình |
+|---|---|
+| Word | PyVi 0.1.1; 5 stopword theo `configs/terms.json` |
+| Character n-gram | 3–5 ký tự trong từng token, có khoảng trắng biên |
+| Vocabulary | DF từ corpus; `min_df=2`, `max_df=0.95` |
+| TF-IDF | Raw TF; smoothed IDF; chuẩn hóa L2 |
+| VSM | Tích vô hướng giữa các vector TF-IDF đã chuẩn hóa |
+| BM25 | Smoothed Robertson IDF; `k1=1.2`, `b=0.75`, query terms duy nhất |
+| LSI | TruncatedSVD trên TF-IDF corpus; 64 chiều; random seed 42 |
 
-- Word: PyVi, five defined stopwords, corpus DF selection min_df=2, max_df=0.95.
-- Character n-gram: 3-5 grams within individual whitespace-separated tokens
-  with one boundary space on either end. Same corpus DF filter.
-- TF-IDF: sklearn TfidfTransformer, raw term frequency, smoothed corpus IDF,
-  L2 normalization; queries transform with SAVED corpus IDF.
-- VSM: cosine of document/query TF-IDF.
-- BM25: Robertson nonnegative IDF, document counts and lengths;
-  unique query terms, defaults k1=1.2, b=0.75.
-- LSI: TruncatedSVD fitted on corpus TF-IDF, default rank 64 and seed 42;
-  query projection uses the same SVD.
-- Metrics: MRR@10, nDCG@10, Recall@100 across all positive qrels;
-  degradations relative to the SAME branch/model clean condition.
-- Deterministic ties: ascending document ID.
-  Empty query representations return no results and receive metrics 0.
+`scripts/prepare_terms.py` sinh văn bản đã xử lý và hai vocabulary. `scripts/build_retrieval_index.py` tạo ma trận term frequency, TF-IDF, IDF, độ dài document và danh sách document IDs cho mỗi biểu diễn. `scripts/evaluate_models.py` nạp index, biến đổi queries bằng **chính vocabulary/IDF của corpus**, xếp hạng và tính metrics.
 
-Full intended grid: 2 representations x 3 models x 8 conditions = 48 cells.
-Smoke tests/subset runs do not establish that all 48 cells are completed.
+Không sử dụng qrels để fit vocabulary, IDF, BM25 statistics hoặc SVD. Development train chưa được dùng để supervised training trong các baseline hiện tại. Các tham số trên được chọn cố định trước thí nghiệm; chưa có hyperparameter search.
 
-## Reproduce
+## 3. Đánh giá
 
-On Windows, use Python 3.12 and UTF-8:
+Mỗi cấu hình chạy trên cùng **482 validation queries** ở 8 điều kiện: clean, no diacritics, Telex typo, phonetic, abbreviation, mixed low/medium/high. Xếp hạng tối đa 100 documents; với những query không có term nào trong vocabulary, ranking rỗng và metrics bằng 0.
 
-    python -m uv sync --locked
-    python -X utf8 scripts/prepare_train.py --download
-    python -X utf8 scripts/prepare_validation.py
-    python -X utf8 scripts/prepare_terms.py --workers 4
-    python -X utf8 scripts/build_retrieval_index.py --branch word --output-dir outputs/index/word
-    python -X utf8 scripts/build_retrieval_index.py --branch char_ngram --output-dir outputs/index/char_ngram
-    python -X utf8 scripts/evaluate_models.py --index-dir outputs/index/word --output-dir outputs/retrieval/val_word
-    python -X utf8 scripts/evaluate_models.py --index-dir outputs/index/char_ngram --output-dir outputs/retrieval/val_char
+- **MRR@10:** nghịch đảo thứ hạng của document liên quan đầu tiên trong top 10, trung bình theo query.
+- **nDCG@10:** chất lượng thứ hạng trong top 10, có xét tất cả document relevant đã được gán nhãn.
+- **Recall@100:** tỷ lệ documents relevant tìm được trong top 100.
+- **Performance drop:** mức chênh lệch tuyệt đối và phần trăm so với cùng mô hình/biểu diễn trên query clean.
 
-If uv is unavailable, install packages declared by pyproject.toml.
-Scripts refuse overwriting an existing split, index or result directory.
+Công thức phần trăm suy giảm:
 
-Outputs:
-- outputs/splits/seed42/{train,val}: clean queries, qrels, 7 validation noises
-- outputs/processed: normalized corpus/queries and corpus-only vocabularies
-- outputs/index/{word,char_ngram}: corpus counts/TF-IDF, IDF, document IDs,
-  document lengths, provenance
-- outputs/retrieval/val_{word,char}: config.json, summary.csv, per_query.csv,
-  summary.md, progress.json
+```text
+drop (%) = (metric_clean - metric_noisy) / metric_clean × 100
+```
 
-After finalizing hyperparameters using ONLY validation, run one held-out test:
+Nếu `metric_clean = 0`, phần trăm suy giảm không xác định. Một mô hình có mức suy giảm thấp nhưng điểm clean thấp vẫn có thể kém hơn các baseline khác; vì vậy phải xem cả chất lượng tuyệt đối và mức suy giảm.
 
-    python -X utf8 scripts/evaluate_models.py --split test --confirm-test-use --index-dir outputs/index/word --output-dir outputs/retrieval/test_word_FINAL
+## 4. Chạy lại từ repository
 
-Reduced corpus checks (--max-docs for index; --allow-subset-smoke for evaluation)
-are NOT valid full-corpus benchmark measurements.
+Yêu cầu: Python 3.11+, [uv](https://docs.astral.sh/uv/) và dữ liệu đặt đúng thư mục như [data/README.md](../data/README.md). Chạy tại root của repository:
 
-## Limitations
+```bash
+uv sync --locked
+uv run python -X utf8 scripts/prepare_validation.py
+uv run python -X utf8 scripts/prepare_terms.py --workers 4
 
-- The project's prior experiments have already seen the test query set; do
-  not claim it is a genuinely unseen final test.
-- Query noise is synthetic; semantic preservation requires human review.
-- Qrels list judged positives; unjudged retrieved docs may be relevant.
-- Char n-gram and SVD full-corpus experiments can be CPU/RAM intensive.
-- Prior word-only results used different preprocessing, and must not be
-  compared directly. Historical reports remain available in Git history.
+uv run python -X utf8 scripts/build_retrieval_index.py --branch word --output-dir outputs/index/word
+uv run python -X utf8 scripts/evaluate_models.py --index-dir outputs/index/word --output-dir outputs/retrieval/val_word
+
+uv run python -X utf8 scripts/build_retrieval_index.py --branch char_ngram --output-dir outputs/index/char_ngram
+uv run python -X utf8 scripts/evaluate_models.py --index-dir outputs/index/char_ngram --output-dir outputs/retrieval/val_char
+```
+
+**Lưu ý:** lệnh đánh giá char ở trên sẽ chạy cả BM25 và LSI, tức 16 cấu hình **chưa hoàn thành trong báo cáo hiện tại**. Đây là hướng dẫn chạy, không phải xác nhận rằng kết quả đã được thu thập.
+
+Để chỉ chạy một mô hình, thêm `--models vsm`, `--models bm25` hoặc `--models lsi`. Các bước có thể tốn nhiều RAM/CPU trên corpus đầy đủ. Chế độ `--max-docs` khi build index và `--allow-subset-smoke` khi đánh giá chỉ phục vụ smoke test; không dùng số liệu đó làm benchmark.
+
+Kiểm tra:
+
+```bash
+uv run python -m unittest discover -s tests -q
+```
+
+Script split, index và evaluator từ chối ghi đè thư mục kết quả đã có. Khi chạy lại, dùng đường dẫn đầu ra mới.
+
+## 5. Artifact và kiểm chứng
+
+| Thư mục | Nội dung |
+|---|---|
+| `outputs/splits/seed42/` | Train/validation sạch, qrels và 7 tập validation noise |
+| `outputs/processed/` | Corpus/query tiền xử lý, vocabularies, thông tin nguồn |
+| `outputs/index/word/` | Count/TF-IDF index, IDF, độ dài và IDs tài liệu |
+| `outputs/index/char_ngram/` | Các artifact tương tự cho character n-gram |
+| `outputs/retrieval/val_word/` | 24 cấu hình đã đánh giá, `summary.csv` và `per_query.csv` |
+| `outputs/retrieval/val_char_full/` | `progress.json` lưu 8 cấu hình VSM char đã hoàn thành |
+
+`outputs/` được bỏ qua bởi Git. Kết quả tổng hợp đã xác minh được đưa lên GitHub trong [validation_results.md](validation_results.md); SHA-256 giúp đối chiếu dữ liệu và index.
+
+Bộ kiểm tra tự động tại lần chạy gần nhất: **37 tests pass**. Audit nguồn/dataset: **67/67 checks pass**.
+
+## 6. Giới hạn nghiên cứu
+
+- Mới có **32/48** cấu hình validation trên full corpus; 16 cấu hình char BM25/LSI còn thiếu.
+- Nhiễu là dữ liệu **synthetic**, một số biến thể có thể đổi nghĩa câu hỏi; cần đọc mẫu trước khi suy luận sâu về robustness.
+- Qrels chỉ mô tả những document đã được gán nhãn. Document chưa được gán nhãn vẫn có thể liên quan.
+- Tập test đã từng được xem xét trong các thí nghiệm trước. Không sử dụng test làm validation và không khẳng định đây là tập test hoàn toàn chưa từng tiếp xúc.
+- Kết quả trước đây trên pipeline từ vựng và tập dữ liệu khác không được so sánh trực tiếp với những số liệu hiện tại.
+
+**Đánh giá test cuối cùng** chỉ thực hiện sau khi chốt cấu hình bằng validation:
+
+```bash
+uv run python -X utf8 scripts/evaluate_models.py --split test --confirm-test-use --index-dir outputs/index/word --output-dir outputs/retrieval/test_word_final
+```
+
+Lệnh trên chỉ là hướng dẫn; **chưa chạy đánh giá test cuối cùng** trong báo cáo hiện tại.

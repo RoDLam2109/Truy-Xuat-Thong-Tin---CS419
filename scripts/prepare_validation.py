@@ -1,6 +1,6 @@
-"""Deterministic, leakage-aware development split from GreenNode TRAIN only.
+"""Create reproducible train/validation splits from the canonical train set.
 
-Never reads test qrels for fitting or alters canonical data/zalo_legal.
+Test queries are checked for overlap; canonical inputs are not modified.
 """
 from __future__ import annotations
 

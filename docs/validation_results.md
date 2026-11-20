@@ -1,82 +1,65 @@
-# Lam v1: validation baseline results (seed 42)
+# Kết quả baseline trên validation
 
-These are **measured on validation**, not test or smoke data.
-The corpus contains 61,425 legal documents; validation contains 482 queries
-and 495 positive qrels. The generated validation noise files preserve query IDs.
-The main pipeline produced 16,498 word features and 111,181 char n-gram features.
+**Phạm vi:** 482 validation queries, 495 qrels, truy xuất trên toàn bộ **61.425 documents**. Nhiễu được tạo từ validation, không dùng qrels của test để chọn mô hình. Cả word và character n-gram đều sử dụng vocabulary/IDF từ corpus.
 
-## Word representation (full corpus)
+**Tiến độ:** **32/48 cấu hình** đã chạy thành công trên full corpus: 24 cấu hình word (VSM, BM25, LSI) và 8 cấu hình character n-gram (VSM). Chưa có kết quả full-corpus cho character n-gram BM25 hoặc LSI; chưa chạy test cuối cùng.
 
-Default parameters: VSM TF-IDF / cosine; BM25 k1=1.2, b=0.75;
-LSI TruncatedSVD 64 dimensions, seed 42. No label-based fitting.
+## 1. nDCG@10 theo loại nhiễu
 
-| Query condition | VSM nDCG@10 | BM25 nDCG@10 | LSI nDCG@10 |
-|---|---:|---:|---:|
-| clean | 0.5008 | **0.6626** | 0.2420 |
-| no_diacritics | 0.0209 | **0.0297** | 0.0019 |
-| telex_typo | 0.3263 | **0.4725** | 0.1376 |
-| phonetic | 0.4925 | **0.6511** | 0.2325 |
-| abbrev | 0.5004 | **0.6589** | 0.2358 |
-| mixed_low | 0.4198 | **0.5875** | 0.1914 |
-| mixed_medium | 0.3119 | **0.4698** | 0.1204 |
-| mixed_high | 0.2284 | **0.3534** | 0.0803 |
+| Điều kiện | Word VSM | Word BM25 | Word LSI | Char VSM |
+|---|---:|---:|---:|---:|
+| Clean | 0.5008 | **0.6626** | 0.2420 | 0.4833 |
+| No diacritics | 0.0209 | **0.0297** | 0.0019 | 0.0219 |
+| Telex typo | 0.3263 | **0.4725** | 0.1376 | 0.4216 |
+| Phonetic | 0.4925 | **0.6511** | 0.2325 | 0.4803 |
+| Abbreviation | 0.5004 | **0.6589** | 0.2358 | 0.4785 |
+| Mixed low | 0.4198 | **0.5875** | 0.1914 | 0.4528 |
+| Mixed medium | 0.3119 | **0.4698** | 0.1204 | 0.3996 |
+| Mixed high | 0.2284 | **0.3534** | 0.0803 | 0.3542 |
 
-Clean MRR@10: VSM 0.4420, BM25 0.6143, LSI 0.2046.
-Clean Recall@100: VSM 0.8990, BM25 0.9457, LSI 0.6127.
+Tham số: BM25 `k1=1.2`, `b=0.75`; LSI TruncatedSVD 64 chiều; seed 42. Đây là baseline cố định, chưa tối ưu theo validation. Bảng chỉ hiển thị các cấu hình **đã chạy**; không nội suy điểm cho BM25/LSI character n-gram.
 
-For BM25, nDCG@10 decreases by 95.52% without accents and by 46.67%
-under mixed_high relative to clean. Robustness must be considered alongside
-absolute ranking quality; a consistently weak model may appear stable.
+## 2. Chất lượng trên clean queries
 
-## Reproduction and provenance
+| Chỉ số | Word VSM | Word BM25 | Word LSI | Char VSM |
+|---|---:|---:|---:|---:|
+| MRR@10 | 0.4420 | **0.6143** | 0.2046 | 0.4306 |
+| nDCG@10 | 0.5008 | **0.6626** | 0.2420 | 0.4833 |
+| Recall@100 | 0.8990 | **0.9457** | 0.6127 | 0.8835 |
 
-Local untracked experiment artifacts:
-- outputs/processed/summary.json (full term vocabulary, input checksums)
-- outputs/index/word/index_meta.json (full index provenance)
-- outputs/retrieval/val_word/config.json
-- outputs/retrieval/val_word/summary.csv
-- outputs/retrieval/val_word/per_query.csv
-- outputs/splits/seed42/split_manifest.json
+## 3. Phân tích kết quả
 
-The input corpus SHA-256 is
-dda9c3f0c09627c1a5f2f921384d1c55b6b9775d67ad7254a5bd7a6a119cb9af.
-All 67/67 source/noise checks passed using scripts/check_dataset.py.
-These outputs can be recreated with docs/model_evaluation.md; raw data and
-generated metrics are intentionally kept out of Git because of file size and
-data governance.
+**Chất lượng truy xuất:** BM25 với biểu diễn word đạt điểm clean tốt nhất trong số các mô hình đã chạy. LSI-64 thấp hơn đáng kể; cần tránh diễn giải khả năng chống chịu nhiễu nếu bỏ qua điểm clean ban đầu.
 
-These are fixed-parameter baselines, NOT tuned best configurations.
-No final test evaluation was performed for this report. The synthetic noise
-generator may change the query semantics; inspect samples before publication.
+**Lỗi bỏ dấu:** word BM25 giảm từ 0.6626 xuống 0.0297 nDCG@10 (**-95,52%**). Character n-gram VSM cũng chỉ đạt 0.0219; thay từ bằng n-gram chưa giải quyết được khoảng cách giữa corpus có dấu và query không dấu.
 
+**Lỗi ký tự và nhiễu hỗn hợp:** character n-gram VSM cải thiện điểm Telex từ 0.3263 lên 0.4216 và mixed high từ 0.2284 lên 0.3542 so với word VSM. Điều này phù hợp với giả thuyết rằng khớp chuỗi ký tự con giảm tác động của một số lỗi gõ. Tuy nhiên, không thể kết luận character n-gram luôn tốt hơn word cho mọi loại nhiễu.
 
-## Character n-gram VSM (full corpus, measured)
+Kết quả hiện tại trả lời các câu hỏi so sánh baseline. Chưa có thí nghiệm kiểm định ý nghĩa thống kê hoặc phương pháp cải tiến đã được chọn dựa trên validation.
 
-The full char index has 61,425 documents, 111,181 features and
-44,687,991 nonzero count-matrix entries. These numbers are **full validation**
-results, NOT the 400-document smoke experiment.
+## 4. Nguồn kết quả và khả năng tái lập
 
-| Query condition | Word VSM nDCG@10 | Char VSM nDCG@10 |
-|---|---:|---:|
-| clean | 0.5008 | 0.4833 |
-| no_diacritics | 0.0209 | 0.0219 |
-| telex_typo | 0.3263 | 0.4216 |
-| phonetic | 0.4925 | 0.4803 |
-| abbrev | 0.5004 | 0.4785 |
-| mixed_low | 0.4198 | 0.4528 |
-| mixed_medium | 0.3119 | 0.3996 |
-| mixed_high | 0.2284 | 0.3542 |
+Mã nguồn và manifest dữ liệu nằm trên GitHub; dataset gốc được chia sẻ qua Drive. Các artifact sau đã được tạo trên máy khi đo:
 
-Character n-grams improve VSM for Telex and mixed noise, but their
-no-diacritics score remains near zero. Simply switching to char n-grams does
-not solve accent removal: candidate generation still depends on overlap
-between accented corpus and unaccented query grams.
+| Artifact | Mục đích |
+|---|---|
+| `outputs/splits/seed42/split_manifest.json` | Seed, kích thước và checksum split |
+| `outputs/processed/summary.json` | Thông tin vocabulary, hash đầu vào |
+| `outputs/index/word/index_meta.json` | Metadata của index word đầy đủ |
+| `outputs/index/char_ngram/index_meta.json` | Metadata của index char đầy đủ |
+| `outputs/retrieval/val_word/summary.csv` | Kết quả 24 cấu hình word |
+| `outputs/retrieval/val_word/per_query.csv` | Metrics theo từng query |
+| `outputs/retrieval/val_char_full/progress.json` | Kết quả 8 cấu hình VSM character n-gram |
 
-Results are preserved in outputs/retrieval/val_char_full/progress.json:
-8/8 VSM conditions completed. Full-corpus char BM25 and char LSI have
-**not** been benchmarked; their 16 cells remain pending. The resource-intensive
-process was stopped after saving VSM progress, so no residual computation is
-left running. The evaluation code supports the remaining experiments,
-but this document deliberately does not invent their scores.
+Corpus SHA-256: `dda9c3f0c09627c1a5f2f921384d1c55b6b9775d67ad7254a5bd7a6a119cb9af`. Word index gồm **16.498 features**; character n-gram index gồm **111.181 features** và **44.687.991 non-zero entries**. Audit dataset đạt **67/67 checks**; unit tests **37/37** tại lần xác minh.
 
-All final test results remain uncomputed; select configurations on validation.
+Artifact lớn được lưu trong `outputs/` và không commit lên Git. Quy trình dựng lại kết quả: [model_evaluation.md](model_evaluation.md).
+
+## 5. Những gì chưa thực hiện
+
+- Chạy **16 cấu hình full-corpus character n-gram BM25/LSI** còn thiếu.
+- Thử nghiệm tối ưu, so sánh mở rộng hoặc cải tiến thuật toán trên validation.
+- Kiểm tra thủ công tính bảo toàn ngữ nghĩa của các câu hỏi nhiễu.
+- Đánh giá test cuối cùng sau khi lựa chọn cấu hình.
+
+Mọi số liệu trên đều là **validation**, không phải test. Kết quả từ index chỉ gồm 400 documents dùng cho smoke test đã được loại khỏi báo cáo.
