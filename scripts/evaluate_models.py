@@ -1,7 +1,7 @@
-"""Compare VSM, BM25, and LSI on paired clean/noisy Drive queries.
+"""Evaluate corpus-fitted VSM/BM25/LSI using main's word/char terms.
 
-No qrels or queries are used to fit IDF, vocabulary, BM25 statistics or SVD.
-All hyperparameters are fixed up front; this is a held-out benchmark, not tuning.
+Default = independent validation split. Final test needs explicit confirmation.
+This script NEVER fits vocabulary, IDF or SVD to queries or qrels.
 """
 from __future__ import annotations
 
@@ -12,14 +12,14 @@ from pathlib import Path
 import sys
 import time
 
-from scipy.sparse import load_npz
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from src.data_io import read_qrels, read_records, sha256
-from src.terms import TermIndex
-from src.retrieval.models import BM25Retriever, LSIRetriever, SparseDotRetriever
+from scripts.build_retrieval_index import sha256
+from scripts.generate_noise import read_queries
+from src.retrieval.feature_matrix import load_index, to_sparse, tfidf_queries
+from src.retrieval.models import SparseDotRetriever, BM25Retriever, LSIRetriever
 from src.retrieval.evaluation import query_metrics, aggregate, degradation
 
 CONDITIONS = (
@@ -29,156 +29,188 @@ CONDITIONS = (
 METRICS = ("mrr@10", "ndcg@10", "recall@100")
 
 
-def parse_args():
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--data-dir", type=Path, default=ROOT / "data/zalo_legal")
-    p.add_argument("--index-dir", type=Path, default=ROOT / "outputs/terms/drive_word_clean")
-    p.add_argument("--output-dir", type=Path, default=ROOT / "outputs/retrieval/drive_word_v1")
-    p.add_argument("--models", nargs="+", choices=("vsm", "bm25", "lsi"),
-                   default=("vsm", "bm25", "lsi"))
-    p.add_argument("--batch-size", type=int, default=16)
-    p.add_argument("--svd-dim", type=int, default=64)
-    p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--bm25-k1", type=float, default=1.2)
-    p.add_argument("--bm25-b", type=float, default=0.75)
-    return p.parse_args()
+def qrels_by_query(path, ids, doc_ids, allow_subset=False):
+    relevant = {qid: {} for qid in ids}
+    seen = set()
+    with path.open(encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        if reader.fieldnames != ["query-id", "corpus-id", "score"]:
+            raise ValueError(f"Invalid qrels columns: {path}")
+        for row in reader:
+            qid, did = row["query-id"], row["corpus-id"]
+            pair = (qid, did)
+            if qid not in relevant or pair in seen:
+                raise ValueError(f"Unknown/duplicate qrel: {pair}")
+            if not allow_subset and did not in doc_ids:
+                raise ValueError(f"Relevant document not found in corpus: {did}")
+            value = int(row["score"])
+            if value < 1:
+                raise ValueError("This dataset expects positive qrels")
+            relevant[qid][did] = value
+            seen.add(pair)
+    if any(not rel for rel in relevant.values()):
+        raise ValueError("Every query needs at least one positive document")
+    return relevant
 
 
-def load_data(data_dir, index):
-    paths = {"clean": data_dir / "queries_clean.jsonl"}
-    paths.update({name: data_dir / "noise" / f"queries_{name}.jsonl"
+def data_paths(data_dir, split_dir, split):
+    if split == "val":
+        base, qrels = split_dir / "val", split_dir / "val/qrels_val.tsv"
+    elif split == "test":
+        base, qrels = data_dir, data_dir / "qrels_test.tsv"
+    else:
+        raise ValueError(f"Invalid split: {split}")
+    paths = {"clean": base / "queries_clean.jsonl"}
+    paths.update({name: base / "noise" / f"queries_{name}.jsonl"
                   for name in CONDITIONS if name != "clean"})
-    query_sets = {name: list(read_records(path)) for name, path in paths.items()}
-    clean_ids = [x["id"] for x in query_sets["clean"]]
+    return paths, qrels
+
+
+def load_evaluation(data_dir, split_dir, split, doc_ids, allow_subset=False):
+    paths, qrels_file = data_paths(data_dir, split_dir, split)
+    query_sets = {name: read_queries(path) for name, path in paths.items()}
+    clean_ids = [row["id"] for row in query_sets["clean"]]
     for name, rows in query_sets.items():
-        if [x["id"] for x in rows] != clean_ids:
-            raise ValueError(f"{name}: IDs/order differ from clean; aborting")
-    judged_rows = read_qrels(data_dir / "qrels_test.tsv", set(clean_ids), set(index.doc_ids))
-    judged = {qid: {} for qid in clean_ids}
-    for qid, did, score in judged_rows:
-        judged[qid][did] = score
-    return paths, query_sets, clean_ids, judged
+        if [row["id"] for row in rows] != clean_ids:
+            raise ValueError(f"{name}: query IDs/order differ from clean")
+    judged = qrels_by_query(qrels_file, clean_ids, set(doc_ids), allow_subset)
+    return paths, qrels_file, query_sets, clean_ids, judged
 
 
 def write_csv(path, rows, fields):
-    with path.open("w", encoding="utf-8", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=fields, extrasaction="ignore")
+    with path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
 
 
-def main():
-    args = parse_args()
-    if args.batch_size < 1:
-        raise ValueError("--batch-size must be >=1")
-    if args.output_dir.exists():
-        raise ValueError(f"Output exists, choose a new run ID: {args.output_dir}")
-    index = TermIndex(args.index_dir)
-    paths, query_sets, ids, qrels = load_data(args.data_dir, index)
-    print(f"Validated {len(ids)} queries, {len(index.doc_ids)} documents, "
-          f"{sum(map(len, qrels.values()))} qrels.", flush=True)
-    # Every condition is transformed by the same corpus-fitted vocabulary and IDF.
-    matrices = {}
-    for name in CONDITIONS:
-        texts = [row["text"] for row in query_sets[name]]
-        matrices[name] = index.transform(texts)
-        print(f"Transformed {name}: {matrices[name][0].shape}, "
-              f"empty={int(np.count_nonzero(np.diff(matrices[name][0].indptr) == 0))}",
-              flush=True)
-    corpus_counts = load_npz(args.index_dir / "counts.npz")
-    corpus_tfidf = load_npz(args.index_dir / "tfidf.npz")
-    lengths = np.load(args.index_dir / "doc_lengths.npy")
-    if corpus_counts.shape != corpus_tfidf.shape or corpus_counts.shape[0] != len(index.doc_ids):
-        raise ValueError("Corpus index shapes incompatible")
-    args.output_dir.mkdir(parents=True)
-    (args.output_dir / "runs").mkdir()
-    settings = {
-        "source": "user-provided Google Drive, folder 18fC4b6ve3zxCzdqMIWADmpmja1yP2XoD",
-        "evaluation_split": "788 paired clean/noisy test queries",
-        "n_queries": len(ids), "n_documents": len(index.doc_ids),
-        "n_qrels": sum(map(len, qrels.values())),
-        "models": args.models, "seed": args.seed, "svd_dimensions": args.svd_dim,
-        "bm25_k1": args.bm25_k1, "bm25_b": args.bm25_b, "top_k": 100,
-        "batch_size": args.batch_size,
-        "index_manifest_sha256": sha256(args.index_dir / "manifest.json"),
+def evaluate(index_dir, data_dir, split_dir, split, output_dir, models=("vsm", "bm25", "lsi"),
+             batch_size=16, svd_dim=64, seed=42, k1=1.2, b=0.75,
+             confirm_test=False, allow_subset_smoke=False):
+    index_dir, data_dir = Path(index_dir), Path(data_dir)
+    split_dir, output_dir = Path(split_dir), Path(output_dir)
+    if split == "test" and not confirm_test:
+        raise ValueError("Final test requires --confirm-test-use. Tune ONLY on val.")
+    if output_dir.exists():
+        raise FileExistsError(f"Output already exists; select a unique run directory: {output_dir}")
+    if batch_size < 1:
+        raise ValueError("batch_size must be positive")
+    meta, doc_ids, vocab, counts, tfidf, lengths, idf = load_index(index_dir)
+    if not meta["full_corpus"] and not allow_subset_smoke:
+        raise ValueError("Subset corpus index is smoke-only; full evaluation rejected")
+    if meta["raw_corpus_sha256"] != sha256(data_dir / "corpus.jsonl"):
+        raise ValueError("Index built from a different corpus")
+    paths, qrels_file, query_sets, ids, judged = load_evaluation(
+        data_dir, split_dir, split, doc_ids, allow_subset_smoke)
+    branch = meta["branch"]
+    if branch not in {"word", "char_ngram"}:
+        raise ValueError("Unknown term branch in index")
+    output_dir.mkdir(parents=True)
+    configuration = {
+        "dataset": "GreenNode Lam v1",
+        "split": split, "branch": branch,
+        "n_documents": len(doc_ids), "n_queries": len(ids),
+        "n_qrels": sum(map(len, judged.values())),
+        "full_corpus": meta["full_corpus"],
+        "allow_subset_smoke": allow_subset_smoke,
+        "model_names": list(models), "bm25_k1": k1, "bm25_b": b,
+        "svd_dim": svd_dim, "seed": seed, "batch_size": batch_size,
+        "index_meta_sha256": sha256(index_dir / "index_meta.json"),
+        "qrels_sha256": sha256(qrels_file),
         "input_sha256": {name: sha256(path) for name, path in paths.items()},
-        "qrels_sha256": sha256(args.data_dir / "qrels_test.tsv"),
-        "hyperparameter_selection": "fixed before test; no test-set tuning",
+        "selection_rule": "Tune on validation; test held out. Corpus-only TF-IDF, IDF, SVD.",
     }
-    (args.output_dir / "config.json").write_text(
-        json.dumps(settings, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    changed = {name: sum(a["text"] != b["text"] for a, b in
-                zip(query_sets["clean"], query_sets[name])) for name in CONDITIONS}
-    all_summary, all_perquery = [], []
-    for model_name in args.models:
-        print(f"Fitting {model_name}...", flush=True)
-        t0 = time.perf_counter()
+    (output_dir / "config.json").write_text(
+        json.dumps(configuration, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    per_query, summaries = [], []
+    for model_name in models:
+        start = time.perf_counter()
         if model_name == "vsm":
-            model = SparseDotRetriever(corpus_tfidf, index.doc_ids, top_k=100)
-            query_matrix_pos = 1
+            retriever = SparseDotRetriever(tfidf, doc_ids, top_k=100)
         elif model_name == "bm25":
-            model = BM25Retriever(corpus_counts, lengths, index.doc_ids,
-                                  k1=args.bm25_k1, b=args.bm25_b, top_k=100)
-            query_matrix_pos = 0
+            retriever = BM25Retriever(counts, lengths, doc_ids, k1=k1, b=b, top_k=100)
+        elif model_name == "lsi":
+            retriever = LSIRetriever(tfidf, doc_ids, dimensions=svd_dim, seed=seed, top_k=100)
         else:
-            model = LSIRetriever(corpus_tfidf, index.doc_ids, dimensions=args.svd_dim,
-                                 seed=args.seed, top_k=100)
-            query_matrix_pos = 1
-        fit_seconds = round(time.perf_counter() - t0, 3)
-        print(f"{model_name} fit complete in {fit_seconds}s.", flush=True)
-        baseline = None
-        for condition in CONDITIONS:
-            t0 = time.perf_counter()
-            query_matrix = matrices[condition][query_matrix_pos]
-            rankings = list(model.rank(query_matrix, batch_size=args.batch_size))
-            if len(rankings) != len(ids):
-                raise AssertionError("Missing query rankings")
-            per_query = []
-            run_path = args.output_dir / "runs" / f"{model_name}_{condition}.jsonl"
-            with run_path.open("w", encoding="utf-8", newline="\n") as run:
-                for qid, ranking in zip(ids, rankings):
-                    doc_ids = [index.doc_ids[col] for col, _ in ranking]
-                    scores = [score for _, score in ranking]
-                    metrics = query_metrics(doc_ids, qrels[qid])
-                    per_query.append(metrics)
-                    all_perquery.append({"model": model_name, "condition": condition,
-                                         "qid": qid, "retrieved": len(ranking), **metrics})
-                    for rank, (did, score) in enumerate(zip(doc_ids, scores), 1):
-                        run.write(json.dumps({"qid": qid, "doc_id": did, "rank": rank,
-                                              "score": score}, ensure_ascii=False) + "\n")
-            summary = aggregate(per_query)
-            if condition == "clean":
-                baseline = summary
-            row = {"model": model_name, "term": "word", "condition": condition,
-                   "queries": len(ids), "changed_queries": changed[condition],
-                   "fit_seconds": fit_seconds, "retrieval_seconds": round(time.perf_counter() - t0, 3),
-                   **summary, **degradation(baseline, summary)}
-            all_summary.append(row)
-            # Preserve verified partial results if a later heavy model fails.
-            (args.output_dir / "progress.json").write_text(
-                json.dumps(all_summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-            print(f"{model_name:<5} {condition:<15} MRR={summary['mrr@10']:.4f} "
-                  f"nDCG={summary['ndcg@10']:.4f} Recall={summary['recall@100']:.4f} "
-                  f"drop={row['ndcg@10_drop_pct']:.1f}%", flush=True)
-    cols = ["term", "model", "condition", "queries", "changed_queries", *METRICS,
-            *(m + "_drop_abs" for m in METRICS),
-            *(m + "_drop_pct" for m in METRICS), "fit_seconds", "retrieval_seconds"]
-    write_csv(args.output_dir / "summary.csv", all_summary, cols)
-    write_csv(args.output_dir / "per_query.csv", all_perquery,
-              ["model", "condition", "qid", "retrieved", *METRICS])
+            raise ValueError(f"Unknown model {model_name}")
+        fit_time = time.perf_counter() - start
+        clean_baseline = None
+        for name in CONDITIONS:
+            started = time.perf_counter()
+            qcounts = to_sparse(query_sets[name], vocab, branch,
+                                meta["term_config"]["stopwords"],
+                                meta["term_config"]["ngram_range"])
+            qmatrix = qcounts if model_name == "bm25" else tfidf_queries(qcounts, idf)
+            empty = int(np.count_nonzero(np.diff(qcounts.indptr) == 0))
+            ranking_rows = retriever.rank(qmatrix, batch_size=batch_size)
+            metrics = []
+            for qid, ranking in zip(ids, ranking_rows):
+                ranked = [doc_ids[column] for column, _ in ranking]
+                scores = query_metrics(ranked, judged[qid])
+                metrics.append(scores)
+                per_query.append(dict(model=model_name, branch=branch,
+                                      condition=name, qid=qid, retrieved=len(ranking),
+                                      **scores))
+            if len(metrics) != len(ids):
+                raise AssertionError("Ranking count differs from query count")
+            agg = aggregate(metrics)
+            if name == "clean":
+                clean_baseline = agg
+            row = dict(branch=branch, model=model_name, split=split, condition=name,
+                       queries=len(ids),
+                       changed_queries=sum(x["text"] != y["text"] for x, y in
+                                           zip(query_sets["clean"], query_sets[name])),
+                       empty_queries=empty,
+                       fit_seconds=round(fit_time, 3),
+                       retrieval_seconds=round(time.perf_counter() - started, 3),
+                       **agg, **degradation(clean_baseline, agg))
+            summaries.append(row)
+            (output_dir / "progress.json").write_text(
+                json.dumps(summaries, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            print(f"{branch} {model_name} {name}: nDCG@10={agg['ndcg@10']:.4f}, "
+                  f"MRR@10={agg['mrr@10']:.4f}, Recall@100={agg['recall@100']:.4f}",
+                  flush=True)
+    fields = ["split", "branch", "model", "condition", "queries", "changed_queries",
+              "empty_queries", *METRICS,
+              *(m + "_drop_abs" for m in METRICS),
+              *(m + "_drop_pct" for m in METRICS), "fit_seconds", "retrieval_seconds"]
+    write_csv(output_dir / "summary.csv", summaries, fields)
+    write_csv(output_dir / "per_query.csv", per_query,
+              ["branch", "model", "condition", "qid", "retrieved", *METRICS])
     lines = [
-        "# Model evaluation on Drive queries (no test-set tuning)", "",
-        f"Corpus: {len(index.doc_ids)} | Queries: {len(ids)} | Qrels: {settings['n_qrels']}", "",
-        "| Model | Condition | MRR@10 | nDCG@10 | Recall@100 | nDCG drop % |",
-        "|---|---|---:|---:|---:|---:|",
+        f"# Retrieval evaluation — {split} / {branch}", "",
+        f"Corpus: {len(doc_ids)} docs; queries: {len(ids)}; qrels: {configuration['n_qrels']}.",
+        f"Full corpus: {meta['full_corpus']}. No query labels used for model fitting.", "",
+        "| Model | Condition | MRR@10 | nDCG@10 | Recall@100 |",
+        "|---|---|---:|---:|---:|",
     ]
-    for row in all_summary:
-        lines.append("| {model} | {condition} | {mrr@10:.4f} | {ndcg@10:.4f} | "
-                     "{recall@100:.4f} | {ndcg@10_drop_pct:.1f}% |".format(**row))
-    lines += ["", "All metrics average over all 788 queries. The same full corpus and "
-              "qrels were used for every condition. Hyperparameters fixed before evaluation."]
-    (args.output_dir / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print("Results saved to " + str(args.output_dir), flush=True)
+    for row in summaries:
+        lines.append(f"| {row['model']} | {row['condition']} | {row['mrr@10']:.4f} | "
+                     f"{row['ndcg@10']:.4f} | {row['recall@100']:.4f} |")
+    (output_dir / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return summaries
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--data-dir", type=Path, default=ROOT / "data/zalo_legal")
+    parser.add_argument("--split-dir", type=Path, default=ROOT / "outputs/splits/seed42")
+    parser.add_argument("--split", choices=["val", "test"], default="val")
+    parser.add_argument("--index-dir", type=Path, required=True)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--models", nargs="+", choices=["vsm", "bm25", "lsi"],
+                        default=["vsm", "bm25", "lsi"])
+    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--svd-dim", type=int, default=64)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--bm25-k1", type=float, default=1.2)
+    parser.add_argument("--bm25-b", type=float, default=0.75)
+    parser.add_argument("--confirm-test-use", action="store_true")
+    parser.add_argument("--allow-subset-smoke", action="store_true")
+    args = parser.parse_args()
+    evaluate(args.index_dir, args.data_dir, args.split_dir, args.split, args.output_dir,
+             args.models, args.batch_size, args.svd_dim, args.seed, args.bm25_k1,
+             args.bm25_b, args.confirm_test_use, args.allow_subset_smoke)
 
 
 if __name__ == "__main__":

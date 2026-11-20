@@ -1,77 +1,95 @@
-# Model selection and robustness evaluation — CS419
+# Model evaluation on GreenNode Lam v1
 
-## Scope and provenance
+## Source of truth and leakage policy
 
-This branch adds **retrieval models and evaluation only** on top of teammate branch
-`feature/data-terms`. It does not modify the term extraction pipeline.
+- Canonical dataset: GreenNode Lam v1, revision 12d76d4d04b94ceada970fcfbe7fec20bfa97389,
+  stored in data/zalo_legal (not tracked in Git). Verification:
+  data/zalo_legal/train_manifest.json and configs/dataset.json.
+- Corpus: 61,425 documents, common to every split.
+- Canonical train: 2,408 query IDs and 2,480 qrels; multiple positive documents
+  for a query are preserved. Canonical test: 788 query IDs and 793 qrels.
+- Train was cleaned by teammate's scripts/prepare_train.py. The 24
+  overlapping query IDs and 25 qrels are removed reproducibly.
+- Never fit vocabulary, IDF or SVD using query relevance labels.
+  Fit vocabulary only on corpus with scripts/prepare_terms.py.
+- Never tune hyperparameters on test. Default evaluation is validation;
+  final test requires --confirm-test-use.
 
-The user-provided [Google Drive dataset](https://drive.google.com/drive/folders/18fC4b6ve3zxCzdqMIWADmpmja1yP2XoD)
-contains **61,425 documents, 788 unique clean queries and 793 positive qrels**,
-plus seven paired noisy query variants. This is **not** the 640-test-query
-`minhnguyent546` split used in teammate's latest term handoff.
-Never mix indices, qrels or metrics across those splits.
+## Development split
 
-`scripts/download_drive_dataset.py` downloads the exact Drive files by ID,
-checks sizes and records SHA-256. Raw data, indices and results are git-ignored.
+Run scripts/prepare_validation.py on canonical TRAIN ONLY, seed 42, group
+by NFC+casefold+collapsed-whitespace query text. Actual output:
 
-## Experimental design
+| Partition | Queries | Qrels |
+|---|---:|---:|
+| Development train | 1,926 | 1,985 |
+| Validation | 482 | 495 |
 
-- Representation used now: **word terms with PyVi**, from teammate's
-  `configs/terms.json`: NFC, lowercase, preserve diacritics and numerals,
-  no stopwords, `min_df=1`, `max_df=1`.
-- All vocabulary, DF/IDF, document lengths and LSI projections are **fit on corpus
-  only**. No training or parameter search on `qrels_test.tsv`.
-- Retrieval systems:
-  - **VSM:** document/query TF-IDF, L2 normalization, cosine similarity.
-  - **BM25:** smoothed Robertson IDF
-    `log(1 + (N-df+0.5)/(df+0.5))`, `k1=1.2`, `b=0.75`.
-    Match unique query terms; use raw document term frequency and length.
-  - **LSI:** TruncatedSVD of corpus TF-IDF, `64` dimensions, seed `42`,
-    cosine similarity after projection.
-- These model parameters were selected **a priori**, not tuned on test.
-- Each system returns up to 100 **positive-score** documents for each of 788
-  queries; empty query vectors return zero results and receive metric 0.
-- Conditions: clean, no_diacritics, telex_typo, phonetic, abbrev,
-  mixed_low, mixed_medium, mixed_high.
-- Metrics: MRR@10, nDCG@10, Recall@100 (all queries in denominator);
-  absolute and relative drops against the *same model's* clean results.
-- Ranking ties: document ID ascending. Qrels with multiple positive documents
-  contribute to nDCG and Recall. Never silently treat missing results as zeros.
+Query IDs and normalized query text are disjoint across development train,
+validation and fixed test. The 7 validation noisy variants are generated using
+the existing noise generator/config and seed 42, without modifying canonical
+train/test. Split, validation noise and reports live in outputs/splits/seed42.
+Keep split IDs fixed across all experiments.
 
-## Running on Windows, Python 3.12
+## Representations and models
 
-```powershell
-cd 'C:\Users\asus\Documents\HocTap\HK5\Information Retrieval\Đồ Án'
-py -3.12 -m venv --system-site-packages .venv
-.\.venv\Scripts\python.exe -m pip install pyvi==0.1.1 gdown==6.5.1
-.\.venv\Scripts\python.exe -X utf8 scripts/download_drive_dataset.py
-.\.venv\Scripts\python.exe -X utf8 scripts/build_index.py --corpus data/zalo_legal/corpus.jsonl --queries data/zalo_legal/queries_clean.jsonl --qrels data/zalo_legal/qrels_test.tsv --output-dir outputs/terms/drive_word_clean
-.\.venv\Scripts\python.exe -X utf8 -m unittest discover -s tests -v
-.\.venv\Scripts\python.exe -X utf8 scripts/evaluate_models.py --data-dir data/zalo_legal --index-dir outputs/terms/drive_word_clean --output-dir outputs/retrieval/drive_word_v1
-```
+The preprocessing script from main creates processed corpus and two vocabularies:
 
-Use a fresh output directory for each run. The teammate's index builder
-rejects overwriting existing artifacts and validates their hashes.
+- Word: PyVi, five defined stopwords, corpus DF selection min_df=2, max_df=0.95.
+- Character n-gram: 3-5 grams within individual whitespace-separated tokens
+  with one boundary space on either end. Same corpus DF filter.
+- TF-IDF: sklearn TfidfTransformer, raw term frequency, smoothed corpus IDF,
+  L2 normalization; queries transform with SAVED corpus IDF.
+- VSM: cosine of document/query TF-IDF.
+- BM25: Robertson nonnegative IDF, document counts and lengths;
+  unique query terms, defaults k1=1.2, b=0.75.
+- LSI: TruncatedSVD fitted on corpus TF-IDF, default rank 64 and seed 42;
+  query projection uses the same SVD.
+- Metrics: MRR@10, nDCG@10, Recall@100 across all positive qrels;
+  degradations relative to the SAME branch/model clean condition.
+- Deterministic ties: ascending document ID.
+  Empty query representations return no results and receive metrics 0.
 
-Outputs in `outputs/retrieval/drive_word_v1/`:
-- `config.json`: data hashes, index manifest hash and model parameters.
-- `summary.csv` / `summary.md`: all aggregate metrics and degradations.
-- `per_query.csv`: paired metrics for every condition.
-- `runs/{model}_{condition}.jsonl`: deterministic top-100 rankings.
+Full intended grid: 2 representations x 3 models x 8 conditions = 48 cells.
+Smoke tests/subset runs do not establish that all 48 cells are completed.
 
-## Interpretation and limitations
+## Reproduce
 
-- Use **clean accuracy** and **absolute noisy performance** together with
-  relative degradation. A weak model might be stable simply because it performs
-  poorly in all settings.
-- Query noise is synthetic and not always semantically safe; inspect samples.
-- Qrels cover a limited judged set; unjudged documents may still be relevant.
-- With only this held-out Drive test split, the comparison is exploratory.
-  Choosing a winner and subsequently reporting its performance on the *same*
-  test set is not an independent estimate of a tuned model. Use separate
-  development queries for hyperparameter tuning, then evaluate on a fresh
-  independent test split if an unbiased final estimate is required.
-- The teammate has not yet implemented character n-gram indexing; do **not**
-  claim the full 2 representations x 3 models x 8 conditions benchmark is complete.
-  When a compatible char-n-gram term index arrives, the retrievers and metrics
-  can be reused without changing corpus-only fitting rules.
+On Windows, use Python 3.12 and UTF-8:
+
+    python -m uv sync --locked
+    python -X utf8 scripts/prepare_train.py --download
+    python -X utf8 scripts/prepare_validation.py
+    python -X utf8 scripts/prepare_terms.py --workers 4
+    python -X utf8 scripts/build_retrieval_index.py --branch word --output-dir outputs/index/word
+    python -X utf8 scripts/build_retrieval_index.py --branch char_ngram --output-dir outputs/index/char_ngram
+    python -X utf8 scripts/evaluate_models.py --index-dir outputs/index/word --output-dir outputs/retrieval/val_word
+    python -X utf8 scripts/evaluate_models.py --index-dir outputs/index/char_ngram --output-dir outputs/retrieval/val_char
+
+If uv is unavailable, install packages declared by pyproject.toml.
+Scripts refuse overwriting an existing split, index or result directory.
+
+Outputs:
+- outputs/splits/seed42/{train,val}: clean queries, qrels, 7 validation noises
+- outputs/processed: normalized corpus/queries and corpus-only vocabularies
+- outputs/index/{word,char_ngram}: corpus counts/TF-IDF, IDF, document IDs,
+  document lengths, provenance
+- outputs/retrieval/val_{word,char}: config.json, summary.csv, per_query.csv,
+  summary.md, progress.json
+
+After finalizing hyperparameters using ONLY validation, run one held-out test:
+
+    python -X utf8 scripts/evaluate_models.py --split test --confirm-test-use --index-dir outputs/index/word --output-dir outputs/retrieval/test_word_FINAL
+
+Reduced corpus checks (--max-docs for index; --allow-subset-smoke for evaluation)
+are NOT valid full-corpus benchmark measurements.
+
+## Limitations
+
+- The project's prior experiments have already seen the test query set; do
+  not claim it is a genuinely unseen final test.
+- Query noise is synthetic; semantic preservation requires human review.
+- Qrels list judged positives; unjudged retrieved docs may be relevant.
+- Char n-gram and SVD full-corpus experiments can be CPU/RAM intensive.
+- Prior word-only results used different preprocessing, and must not be
+  compared directly. Historical reports remain available in Git history.
