@@ -11,7 +11,7 @@
 
 **Kết luận hiện tại:** với 482 validation queries, **BM25 + word** đạt **nDCG@10 = 0.6626** trên query clean, cao nhất trong những cấu hình đã chạy. **Character n-gram + VSM** cải thiện so với word + VSM khi gặp lỗi Telex và nhiễu hỗn hợp; nhưng việc bỏ dấu vẫn làm giảm điểm rất mạnh. Đây là **kết quả validation**, không phải mô hình đã được chọn cuối cùng.
 
-## 2. Teammate đã chọn term như thế nào?
+## 2. Term đã được chọn như thế nào?
 
 Cả hai phương pháp đều xây dựng vocabulary từ **61.425 documents**, không dùng qrels:
 
