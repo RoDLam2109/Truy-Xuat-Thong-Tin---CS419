@@ -1,5 +1,30 @@
-﻿.venv/
+# Môi trường Python và cache
+.venv/
+venv/
 __pycache__/
-*.pyc
-data/
-outputs/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# Dữ liệu lớn; chỉ lưu hướng dẫn và metadata nguồn
+/data/*
+!/data/README.md
+!/data/zalo_legal/
+/data/zalo_legal/*
+!/data/zalo_legal/train_manifest.json
+
+# Kết quả xử lý, model và báo cáo tự sinh
+/outputs/
+/build/
+/dist/
+*.egg-info/
+*.log
+
+# Cấu hình riêng trên máy
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db

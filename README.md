@@ -1,330 +1,108 @@
 # Evaluating the Robustness of Information Retrieval Models under Noisy Vietnamese Queries
 
-> **Bộ tài liệu đã làm:** [Mục lục](learned/README.md) · [Tổng kết triển khai](learned/implementation_summary.md) · [Bàn giao model](learned/model_handoff.md).
->
-> **Bước đang triển khai:** chuẩn bị dữ liệu và term theo từ cho query gốc trước. Đã có `prepare_data.py`, `build_index.py`, module word/PyVi và tests; chưa có module xếp hạng/đánh giá sạch–nhiễu. Xem [hướng dẫn đầy đủ](learned/clean_terms.md) và [kết quả chạy toàn bộ corpus](learned/clean_terms_run.md).
->
-> Nguồn mới là **minhnguyent546/zalo-ai-legal-text-retrieval-2021**, lưu riêng trong `data/zalo_legal_2021/`. Mô tả GreenNode/788 query trước đây không áp dụng cho run này. Script sinh nhiễu cũ còn giữ default đường dẫn legacy; chưa sinh lại nhiễu từ dữ liệu mới.
+Đồ án CS419 nghiên cứu mức suy giảm chất lượng truy xuất tài liệu pháp luật khi câu truy vấn tiếng Việt chứa lỗi gõ, viết tắt, bỏ dấu hoặc nhiễu hỗn hợp.
 
-## 1. Mục tiêu dự án
+## 1. Nhóm đã làm được gì?
 
-Đánh giá mức độ chống chịu của các mô hình truy xuất thông tin khi câu truy vấn tiếng Việt bị nhiễu. Với mỗi mô hình và cách biểu diễn term, lấy kết quả trên query sạch làm điểm chuẩn, chạy các phiên bản query nhiễu, rồi tính **mức suy giảm hiệu năng**.
+| Phần việc | Đã triển khai | Kết quả hiện tại | Đã chốt phương pháp tốt nhất? |
+|---|---|---|---|
+| **Term Representation** (phần phụ trách term) | Word/PyVi và character n-gram 3–5; lọc vocabulary bằng DF | **16.498 word terms** và **111.181 char n-grams** | **Chưa.** Đã tạo hai biểu diễn để so sánh, chưa chọn một biểu diễn tối ưu |
+| **Model Evaluation** (nhánh này) | VSM, BM25, LSI; mỗi mô hình kết hợp với từng biểu diễn | **32/48** cấu hình validation đã chạy; **BM25 + word** có điểm clean tốt nhất trong các cấu hình đã đo | **Chưa.** Mới có baseline, chưa tuning và đánh giá hết các ứng viên |
 
-Dataset chính là **Zalo Legal**. Trong toàn bộ thí nghiệm, chỉ thay đổi câu truy vấn; giữ nguyên corpus, qrels và tập ID truy vấn.
+**Kết luận hiện tại:** với 482 validation queries, **BM25 + word** đạt **nDCG@10 = 0.6626** trên query clean, cao nhất trong những cấu hình đã chạy. **Character n-gram + VSM** cải thiện so với word + VSM khi gặp lỗi Telex và nhiễu hỗn hợp; nhưng việc bỏ dấu vẫn làm giảm điểm rất mạnh. Đây là **kết quả validation**, không phải mô hình đã được chọn cuối cùng.
 
-Dự án khảo sát hai yếu tố:
+## 2. Term đã được chọn như thế nào?
 
-1. **Cách biểu diễn term:** từ tiếng Việt và character n-gram.
-2. **Mô hình truy xuất:** VSM với TF-IDF/cosine similarity, BM25 và LSI/SVD.
+Cả hai phương pháp đều xây dựng vocabulary từ **61.425 documents**, không dùng qrels:
 
-Các câu hỏi nghiên cứu:
+| Biểu diễn | Cách tạo term | Trước lọc | Sau lọc |
+|---|---|---:|---:|
+| **Word** | Tách từ bằng PyVi 0.1.1; bỏ 5 stopwords | 26.143 | **16.498** |
+| **Character n-gram** | Các đoạn 3–5 ký tự trong từng token, có khoảng trắng biên | 195.945 | **111.181** |
 
-- Mỗi mô hình suy giảm bao nhiêu so với điểm sạch khi query có từng loại lỗi?
-- Mức suy giảm thay đổi thế nào khi mức nhiễu hỗn hợp tăng?
-- Biểu diễn bằng character n-gram có giảm tác động của lỗi ký tự so với biểu diễn bằng từ tiếng Việt không?
-- Mô hình nào cân bằng tốt giữa chất lượng truy xuất và khả năng chống chịu nhiễu?
+**Bước lọc term:** dùng Document Frequency (DF), giữ những term xuất hiện trong ít nhất 2 documents và không vượt 95% corpus (`min_df=2`, `max_df=0.95`). Đây là **feature selection trong từng biểu diễn**, không phải thí nghiệm chọn Word thắng Character n-gram (hoặc ngược lại).
 
-## 2. Dữ liệu và schema
+Cách tách term, cấu hình, ví dụ và artifact: [PREPROCESSING.md](PREPROCESSING.md). Mã nguồn: [scripts/prepare_terms.py](scripts/prepare_terms.py).
 
-Nguồn đang dùng: [minhnguyent546/zalo-ai-legal-text-retrieval-2021](https://huggingface.co/datasets/minhnguyent546/zalo-ai-legal-text-retrieval-2021).
+## 3. Phần Model Evaluation đã thử những mô hình nào?
 
-Dùng `scripts/prepare_data.py` để tải snapshot và xuất các file tại `data/zalo_legal_2021/`:
-
-| Thành phần | File | Số lượng đã xác minh |
-|---|---|---:|
-| Corpus | `corpus.jsonl` | 61.425 tài liệu |
-| Toàn bộ query gốc | `queries_all.jsonl` | 3.196 query |
-| Query phát triển | `queries_train.jsonl` | 2.556 query |
-| Query sạch để đánh giá cuối | `queries_clean.jsonl` | 640 query test |
-| Nhãn train/test | `qrels_train.tsv`, `qrels_test.tsv` | 2.556 / 640 dòng |
-
-Query được chia theo ID trong qrels; tên split `train` của bảng queries trên Hugging Face không phải cách chia thí nghiệm. Train/test có ID rời nhau. Trong bản này, mỗi query test có một nhãn liên quan dương; bộ đọc vẫn hỗ trợ nhiều tài liệu liên quan. Không mặc định tính chất này cho dataset khác.
-
-Query có schema `{"id": "query-id", "text": "Câu hỏi"}`. Corpus có schema `{"id": "document-id", "title": "Tiêu đề", "text": "Nội dung"}`. Qrels có header `query-id`, `corpus-id`, `score`, phân cách bằng tab. ID được giữ nguyên dưới dạng chuỗi.
-
-Nội dung tài liệu gồm cả title và text. Module hiện tách từ từng trường riêng rồi nối danh sách term, không tăng trọng số title và không tạo từ qua ranh giới hai trường.
-
-`queries_clean.jsonl` là query gốc chưa gây nhiễu, không phải cam kết không có lỗi tự nhiên. Các file nhiễu cho bộ 640 query **chưa được tạo trong bước này**. Các dữ liệu/báo cáo GreenNode cũ nếu có nằm riêng tại `data/zalo_legal/`, không được ghép với dữ liệu mới.
-
-## 3. Term và hai cách biểu diễn
-
-Theo cách dùng trong mô tả môn học, **term là đơn vị dùng để biểu diễn và lập chỉ mục cho tài liệu và query**, chẳng hạn từ hoặc n-gram. Mỗi cách biểu diễn tạo một không gian đặc trưng riêng và được chạy thí nghiệm riêng.
-
-**Term truy xuất khác với token dùng để đo tỷ lệ nhiễu.** Script sinh nhiễu hiện đếm các đơn vị tách theo khoảng trắng có chứa chữ hoặc số. Các đơn vị đó không mặc định là từ tiếng Việt sau tách từ, cũng không phải character n-gram. Hai nhánh truy xuất sử dụng cùng các file query nhiễu đã sinh từ văn bản sạch.
-
-### 3.1. Term theo từ tiếng Việt (`word`)
-
-Pipeline **đã triển khai** trong `src/terms/`, cấu hình `configs/terms.json`:
-
-1. Unicode NFC, chữ thường và chuẩn hóa khoảng trắng.
-2. Tách từ bằng PyVi 0.1.1, giữ `_` nối các tiếng thuộc từ.
-3. Giữ chữ/số, loại dấu câu khỏi danh sách term.
-4. Stopword mặc định rỗng; `min_df=1`, `max_df=1.0`, chưa loại term theo DF.
-5. Fit vocabulary, DF, count và TF-IDF chỉ trên corpus; query chỉ transform.
-
-Không stemming/lemmatization, không bỏ dấu hay sửa chính tả. Giữ số, term một ký tự và các từ phủ định/điều kiện. Ví dụ `bảo hiểm y tế` → `bảo_hiểm`, `y_tế` theo bộ tách từ đã kiểm thử.
-
-DF là số tài liệu có term, khác tổng số lần xuất hiện. Nếu đổi stopword/ngưỡng DF, tạo run mới và chốt trước khi đánh giá test. Chưa chọn ngưỡng IDF hoặc tối ưu trên nhãn test.
-
-Nhánh này giúp quan sát tác động của mất khớp term và thay đổi ranh giới từ khi query có lỗi. Chi tiết artifact và API transform: [learned/clean_terms.md](learned/clean_terms.md).
-
-### 3.2. Term theo character n-gram (`char_ngram`)
-
-Pipeline dự kiến:
-
-1. Chuẩn hóa Unicode NFC, chữ thường và khoảng trắng.
-2. Tạo các chuỗi ký tự liên tiếp với độ dài **3–5**.
-3. Thống kê DF trên corpus và lọc n-gram quá hiếm hoặc quá phổ biến.
-4. Lưu vocabulary và biến đổi tài liệu/query sang biểu diễn phù hợp với từng mô hình.
-
-Ví dụ: chuỗi `phạt` có các 3-gram `phạ`, `hạt`. Khi một ký tự bị sai, các n-gram ở những phần khác của query vẫn có thể khớp với tài liệu.
-
-Nhánh này tạo đặc trưng trực tiếp từ văn bản chuẩn hóa, không yêu cầu tách từ tiếng Việt hay loại stopword theo từ trước khi tạo n-gram. Cần ghi rõ analyzer có cho phép n-gram đi qua khoảng trắng/ranh giới từ, có thêm ký tự biên hay không; cố định lựa chọn đó giữa corpus, query sạch và query nhiễu.
-
-Character n-gram có thể tăng khả năng khớp từng phần, nhưng cũng có thể tăng kích thước vocabulary, chỉ mục và chi phí truy xuất. Đây là giả thuyết cần kiểm chứng bằng kết quả thí nghiệm.
-
-### 3.3. Quy tắc chung về term
-
-- Xây dựng vocabulary và thống kê DF/IDF **chỉ từ corpus**. Không fit lại bằng query sạch, query nhiễu hoặc qrels test.
-- Trong cùng một cách biểu diễn term, dùng chung vocabulary đã lọc cho ba mô hình; mỗi mô hình tính trọng số theo phương pháp của mình.
-- Dùng cùng bộ tiền xử lý, tách từ/analyzer, stopword và ngưỡng lọc cho query sạch và query nhiễu của cùng cấu hình.
-- Giữ dấu tiếng Việt trong pipeline chính. Không tự khôi phục dấu hay sửa lỗi trước truy xuất. Nếu bổ sung bước xử lý như vậy, ghi thành một cấu hình thí nghiệm riêng.
-- Term ngoài vocabulary không được thêm vào chỉ mục trong lúc đánh giá. Ghi nhận tỷ lệ term ngoài vocabulary và số query không còn đặc trưng dùng được để hỗ trợ phân tích lỗi.
-- Mỗi nhánh có chỉ mục riêng; không thay cách biểu diễn giữa lượt sạch và lượt nhiễu của một phép so sánh.
-
-## 4. Ba mô hình truy xuất
-
-| Mô hình | Biểu diễn và cách tính điểm | Thành phần cần cố định |
+| Model | Cách truy xuất | Cấu hình baseline |
 |---|---|---|
-| **VSM với TF-IDF** | Biểu diễn query/tài liệu bằng vector TF-IDF; xếp hạng theo cosine similarity | Vocabulary, công thức TF/IDF và chuẩn hóa vector |
-| **BM25** | Tính điểm khớp term từ tần suất term, IDF và chuẩn hóa độ dài tài liệu | Vocabulary, công thức IDF, `k1`, `b` và thống kê corpus |
-| **LSI/SVD** | Áp dụng truncated SVD lên ma trận TF-IDF của corpus; chiếu query vào cùng không gian tiềm ẩn và tính cosine similarity | Bộ TF-IDF, số chiều SVD, seed và phép chiếu đã fit |
+| **VSM** | TF-IDF + cosine similarity | IDF fit trên corpus, chuẩn hóa L2 |
+| **BM25** | Term frequency, IDF và độ dài document | `k1=1.2`, `b=0.75` |
+| **LSI** | TF-IDF → TruncatedSVD → cosine similarity | 64 chiều, seed 42 |
 
-Mỗi mô hình chạy với cả `word` và `char_ngram`, tạo **6 cấu hình truy xuất chính**.
+Mỗi mô hình dự kiến chạy với **cả Word và Character n-gram**, trên **8 điều kiện query** (clean + 7 loại nhiễu). Tổng thiết kế: **2 × 3 × 8 = 48** cấu hình.
 
-Quy tắc triển khai:
+| Tổ hợp model/term | Clean nDCG@10 | Trạng thái |
+|---|---:|---|
+| Word + VSM | 0.5008 | Đã chạy 8/8 điều kiện |
+| **Word + BM25** | **0.6626** | Đã chạy 8/8 điều kiện |
+| Word + LSI | 0.2420 | Đã chạy 8/8 điều kiện |
+| Character n-gram + VSM | 0.4833 | Đã chạy 8/8 điều kiện |
+| Character n-gram + BM25 | — | Chưa chạy full-corpus |
+| Character n-gram + LSI | — | Chưa chạy full-corpus |
 
-- VSM và LSI dùng cùng cách tạo TF-IDF trong một nhánh term để việc so sánh rõ ràng.
-- BM25 nhận tần suất term và thống kê độ dài từ nhánh tương ứng; không đưa ma trận TF-IDF đã tính sẵn vào thay cho tần suất term của BM25.
-- Với `word`, độ dài tài liệu trong BM25 được tính bằng số term theo từ; với `char_ngram`, tính bằng số term n-gram theo analyzer đã chọn. Ghi rõ quy tắc đếm sau bước lọc vocabulary.
-- Fit TF-IDF và SVD trên corpus, sau đó lưu để dùng lại. Query sạch và nhiễu chỉ được transform bằng các thành phần đã fit.
-- Cố định tham số giữa tám điều kiện query. Nếu cần chọn ngưỡng lọc, tham số BM25 hoặc số chiều SVD, dùng tập dev riêng hoặc chốt trước; không chọn dựa trên kết quả test.
-- Truy xuất trên toàn bộ 61.425 tài liệu và lấy ít nhất top 100. Run trên corpus nhỏ chỉ phục vụ kiểm tra kỹ thuật, phải ghi rõ và không gộp vào kết quả chính.
+Dấu **—** nghĩa là **chưa có kết quả**, không phải điểm 0. Các mô hình hiện tại **không train trên query–qrel pairs**: vocabulary, IDF, BM25 statistics và SVD được xây dựng từ corpus. Qrels được dùng để **tính metrics** trên validation. Chưa có supervised training hoặc hyperparameter search.
 
-## 5. Các điều kiện query
+Mã nguồn: [src/retrieval/models.py](src/retrieval/models.py), [scripts/evaluate_models.py](scripts/evaluate_models.py).
 
-Tất cả biến thể được tạo trực tiếp từ `queries_clean.jsonl`. Corpus và qrels được giữ nguyên.
+### So sánh robustness: nDCG@10
 
-| Điều kiện | File | Cách tạo hiện tại |
-|---|---|---|
-| Sạch | `queries_clean.jsonl` | Điểm chuẩn của từng cấu hình mô hình/term |
-| Mất dấu | `noise/queries_no_diacritics.jsonl` | Bỏ toàn bộ dấu tiếng Việt, gồm `đ → d`, `Đ → D` |
-| Lỗi gõ Telex/VNI | `noise/queries_telex_typo.jsonl` | Thiếu phím dấu/phím tạo chữ hoặc phím dấu còn dạng thô |
-| Chính tả/phát âm | `noise/queries_phonetic.jsonl` | Ánh xạ theo từ điển nhầm lẫn ban đầu |
-| Viết tắt/teencode | `noise/queries_abbrev.jsonl` | Ví dụ `không → ko`, `được → đc`, `với → vs` |
-| Hỗn hợp nhẹ | `noise/queries_mixed_low.jsonl` | Xác suất chọn mỗi token: 10% |
-| Hỗn hợp trung bình | `noise/queries_mixed_medium.jsonl` | Xác suất chọn mỗi token: 25% |
-| Hỗn hợp nặng | `noise/queries_mixed_high.jsonl` | Xác suất chọn mỗi token: 40% |
+Cùng 482 validation queries, toàn bộ corpus 61.425 documents:
 
-Các đường dẫn trong bảng tính từ `data/zalo_legal_2021/`. Khi triển khai trên nguồn mới, mỗi file nhiễu phải có **640 dòng**, cùng ID và thứ tự với file sạch. Cấu hình sinh nhiễu hiện có cho ba điều kiện đơn Telex/VNI, phonetic và abbrev dùng xác suất chọn token 25%; mất dấu toàn câu là một phép thử riêng có mức can thiệp mạnh.
+| Điều kiện | Word VSM | Word BM25 | Word LSI | Char VSM |
+|---|---:|---:|---:|---:|
+| **Clean** | 0.5008 | **0.6626** | 0.2420 | 0.4833 |
+| No diacritics | 0.0209 | 0.0297 | 0.0019 | 0.0219 |
+| Telex typo | 0.3263 | **0.4725** | 0.1376 | 0.4216 |
+| Phonetic | 0.4925 | **0.6511** | 0.2325 | 0.4803 |
+| Abbreviation | 0.5004 | **0.6589** | 0.2358 | 0.4785 |
+| Mixed low | 0.4198 | **0.5875** | 0.1914 | 0.4528 |
+| Mixed medium | 0.3119 | **0.4698** | 0.1204 | 0.3996 |
+| Mixed high | 0.2284 | 0.3534 | 0.0803 | **0.3542** |
 
-### Quy tắc sinh và kiểm tra nhiễu
+**Nhận xét:** BM25 + word hiện đứng đầu về clean, MRR@10 và Recall@100 trong các baseline đã thử. Char VSM tốt hơn Word VSM khi có lỗi Telex và mixed noise, nhưng clean thấp hơn. Không thể gọi BM25 + word là mô hình cuối cùng khi vẫn còn 16 cấu hình chưa đánh giá.
 
-- Seed mặc định **42**; lưu cấu hình, phiên bản quy tắc và log từng thay đổi.
-- Không ép mỗi query phải có lỗi. Token được chọn nhưng không có phép biến đổi hợp lệ sẽ được giữ nguyên và thống kê.
-- Trong mixed, chọn đều một loại nhiễu trong các loại áp dụng được tại token đó; mỗi vị trí nhận tối đa một phép biến đổi.
-- Ba mức mixed dùng chung lượt chọn và cùng biến thể ở các vị trí chung: các vị trí đổi ở low là tập con của medium và high.
-- Đo tỷ lệ nhiễu bằng số vị trí token gốc thực sự đổi chia cho tổng token gốc có chứa chữ hoặc số. Token chỉ gồm dấu câu không nằm trong mẫu số.
-- Xác suất chọn token không đồng nghĩa với tỷ lệ thực sự đổi. Từ điển phát âm/viết tắt hiện còn nhỏ nên độ phủ thấp; báo cáo tỷ lệ thực tế và tỷ lệ query thay đổi trước khi so sánh độ khó giữa các loại nhiễu.
-- Giữ query không đổi trong đánh giá chính. Nếu phân tích riêng các query thực sự đổi, phải ghi rõ tập con và số mẫu.
-- Giữ ID riêng khi các query khác ID có cùng văn bản sau biến đổi; thống kê collision, không loại trùng file nhiễu theo nội dung.
-- Bảo vệ số, mã văn bản, từ viết tắt in hoa, tên viết hoa ngoài vị trí đầu câu và các đơn vị đã cấu hình trong các điều kiện ngoài mất dấu toàn câu. Việc nhận diện tên riêng hiện dùng heuristic.
-- Rà soát mẫu để phát hiện biến đổi đổi nghĩa hoặc thiếu tự nhiên. Các cặp phát âm như `lỗi → nỗi` cần được đọc trong ngữ cảnh; dữ liệu tổng hợp hiện chưa được duyệt thủ công toàn bộ.
+Bảng MRR@10, Recall@100, phân tích và nguồn artifact: [docs/validation_results.md](docs/validation_results.md).
 
-Lỗi bàn phím hiện được mô phỏng theo quy tắc cụ thể, chẳng hạn `phạt → phat` (thiếu phím dấu), `phạt → phatj`/`phat5` (phím dấu Telex/VNI còn dạng thô), `đầu → đàu` (thiếu phím tạo â). Script chưa mô phỏng mọi dạng lỗi của một bộ gõ đầy đủ.
+## 4. Dataset và lý do có validation split
 
-**Sinh nhiễu diễn ra trên văn bản trước bước biểu diễn term.** Không tạo nhiễu riêng trên các term sau tách từ hoặc trên n-gram; như vậy hai nhánh truy xuất nhận cùng câu query đầu vào.
+Sử dụng [GreenNode Zalo Legal Retrieval](https://huggingface.co/datasets/GreenNode/zalo-ai-legal-text-retrieval-vn), bản nhóm đã chuẩn hóa. Revision, các file nguồn và checksum ghi trong [configs/dataset.json](configs/dataset.json). Dữ liệu nhóm: [Google Drive](https://drive.google.com/drive/folders/1fdZjJ1i7o44f3jNwbZL2okPxKcNfkv7H).
 
-## 6. Thiết kế và quy trình thí nghiệm
+| Tập dữ liệu | Queries | Qrels | Vai trò hiện tại |
+|---|---:|---:|---|
+| Train chuẩn hóa từ GreenNode | 2.408 | 2.480 | Nguồn tạo development split |
+| Development train (80%) | 1.926 | 1.985 | Đã tạo nhưng **chưa dùng** trong baseline hiện tại |
+| **Validation (20%)** | **482** | **495** | **Đang dùng thực tế** để so sánh mô hình và noise |
+| Test giữ nguyên | 788 | 793 | **Chưa chạy đánh giá cuối cùng** |
 
-Thiết kế chính gồm:
+Corpus **61.425 documents dùng chung** cho tất cả các tập query. Split 80/20 được **bổ sung trên nhánh model-evaluation**, không thay đổi file train/test đã chốt của nhóm. Seed 42 và nhóm theo nội dung query chuẩn hóa; 7 bộ noise validation được sinh riêng. Không dùng test để chọn tham số.
 
-```text
-2 cách biểu diễn term × 3 mô hình × 8 điều kiện query = 48 lượt đánh giá
-```
+Chi tiết dữ liệu và đường dẫn: [data/README.md](data/README.md).
 
-Trong đó có 6 lượt sạch và 42 lượt nhiễu. Mỗi lượt dùng cùng 640 ID query và cùng tập tài liệu ứng viên.
+## 5. Chạy lại và kiểm chứng
 
-| Cách biểu diễn term | Mô hình | Điều kiện |
-|---|---|---|
-| `word` | VSM TF-IDF, BM25, LSI/SVD | Sạch + 7 điều kiện nhiễu |
-| `char_ngram` | VSM TF-IDF, BM25, LSI/SVD | Sạch + 7 điều kiện nhiễu |
-
-Quy trình:
-
-1. Kiểm tra query, corpus, qrels và cố định tập test.
-2. Chọn nhánh term; tiền xử lý corpus, lọc vocabulary và tạo các biểu diễn/chỉ mục cho ba mô hình.
-3. Chạy query sạch qua từng mô hình để lấy điểm chuẩn của đúng cấu hình term/mô hình đó.
-4. Tạo hoặc sử dụng lại bảy file query nhiễu từ câu sạch với seed và cấu hình đã chốt.
-5. Chạy query nhiễu bằng cùng pipeline, mô hình và chỉ mục đã dùng cho query sạch; không fit lại theo điều kiện nhiễu.
-6. Tính metrics và mức suy giảm so với lượt sạch tương ứng.
-7. Lặp lại cho nhánh term còn lại; tổng hợp theo mô hình, biểu diễn term, loại lỗi và mức nhiễu.
-8. Phân tích các query bị giảm mạnh, thay đổi term khớp, term ngoài vocabulary và trường hợp n-gram giữ được khớp từng phần.
-
-## 7. Đánh giá và mức suy giảm
-
-Các metric chính:
-
-- **MRR@10:** trung bình nghịch đảo thứ hạng của tài liệu liên quan đầu tiên trong top 10; bằng 0 nếu không tìm thấy.
-- **nDCG@10:** chất lượng thứ hạng top 10, chuẩn hóa theo thứ hạng lý tưởng từ qrels.
-- **Recall@100:** tỷ lệ tài liệu liên quan đã gán nhãn xuất hiện trong top 100; dùng đầy đủ qrels, kể cả query có hai tài liệu liên quan.
-
-Với metric `M`, cùng một mô hình và cách biểu diễn term:
-
-```text
-Mức suy giảm tuyệt đối = M_sạch - M_nhiễu
-
-Tỷ lệ suy giảm tương đối (%) = (M_sạch - M_nhiễu) / M_sạch × 100
-```
-
-- Mỗi lượt nhiễu được so với **đúng lượt sạch của cùng mô hình và nhánh term**.
-- Nếu `M_sạch = 0`, ghi tỷ lệ suy giảm tương đối là `N/A`.
-- Suy giảm âm nghĩa là điểm trên query nhiễu tăng so với query sạch.
-- Điểm metric mặc định ở thang 0–1; nếu đổi thang, ghi rõ trong bảng và biểu đồ.
-- Mức suy giảm thấp hơn cho thấy mô hình ít bị ảnh hưởng hơn trong điều kiện đang xét. Tuy nhiên, cần đọc cùng điểm sạch và điểm nhiễu: mô hình có điểm thấp ở cả hai điều kiện vẫn có thể có suy giảm nhỏ.
-
-Mẫu bảng tổng hợp, mỗi dòng ứng với một metric và một điều kiện nhiễu:
-
-| Term | Mô hình | Điều kiện nhiễu | Tỷ lệ nhiễu thực tế | Metric | Điểm sạch | Điểm nhiễu | Suy giảm tuyệt đối | Suy giảm tương đối (%) |
-|---|---|---|---|---|---|---|---|---|
-| word | BM25 | mixed_low | … | MRR@10 | … | … | … | … |
-| char_ngram | BM25 | mixed_low | … | MRR@10 | … | … | … | … |
-
-Đây là mẫu định dạng, chưa phải kết quả thực nghiệm.
-
-### Quy tắc tính và so sánh
-
-- Tính điểm trung bình theo query trên đủ 640 ID; không bỏ query không khớp term hoặc không có kết quả ra khỏi mẫu số.
-- Nếu vector query bằng 0 trong VSM/LSI hoặc không có term dùng được để truy xuất, trả danh sách rỗng, tính metrics bằng 0 và ghi nhận tình trạng đó.
-- Phân biệt trường hợp không có kết quả hợp lệ với run bị thiếu query do lỗi pipeline; run thiếu query phải được kiểm tra trước khi tổng hợp.
-- Lưu điểm từng `qid` để so sánh sạch–nhiễu theo cặp. Nếu tính khoảng tin cậy, lấy mẫu bootstrap theo cặp query và ghi seed/số lần lấy mẫu.
-- Không xem tám phiên bản của một query là tám mẫu độc lập.
-- Dùng cùng qrels trong mọi lượt. Nhãn hiện có là cơ sở chấm điểm; tài liệu chưa có nhãn không đồng nghĩa chắc chắn không liên quan trong thực tế.
-
-Ngoài metrics chính, nên ghi kích thước vocabulary/chỉ mục, thời gian tạo chỉ mục và thời gian truy xuất để đánh giá chi phí của character n-gram.
-
-## 8. Định dạng đầu ra và khả năng tái lập
-
-Kết quả xếp hạng dự kiến dùng JSONL:
-
-```json
-{"qid": "query-id", "doc_id": "document-id", "rank": 1, "score": 12.34}
-```
-
-- Mỗi cặp `qid`, `doc_id` xuất hiện tối đa một lần trong một lượt.
-- `rank` bắt đầu từ 1; score giảm dần, khi bằng điểm dùng `doc_id` tăng dần để cố định thứ tự.
-- Lưu danh sách ID query đã xử lý và trạng thái riêng để nhận diện cả query trả kết quả rỗng.
-- Mỗi run lưu dataset, nhánh term, model, điều kiện query, seed, cấu hình tiền xử lý, ngưỡng lọc và tham số mô hình.
-- Lưu SHA-256 của dữ liệu, phiên bản code, dependency, stopword/bộ tách từ và các thành phần vocabulary/IDF/SVD đã fit.
-- Tổ chức output truy xuất dự kiến theo `outputs/retrieval/<term>/<model>/<condition>/` để tránh trộn kết quả.
-
-Không dùng tập test để chọn tham số hay sửa quy tắc dựa trên điểm truy xuất. Khi thay dữ liệu, vocabulary hoặc cấu hình mô hình, chạy lại lượt sạch và các lượt nhiễu cần so sánh.
-
-## 9. Trạng thái triển khai và cách chạy dữ liệu/term
-
-**Đã có:** script tải/kiểm tra đúng dataset đã chọn; pipeline word/PyVi; vocabulary/DF, ma trận count/TF-IDF corpus và query sạch; thứ tự ID, thống kê OOV, manifest/hash; script sinh nhiễu và tests cũ.
-
-**Chưa có:** nhánh character n-gram, các retriever VSM/BM25/LSI, metrics/ranked runs và 48 lượt đánh giá. Chưa sinh nhiễu cho bộ query mới. Việc có TF-IDF không đồng nghĩa đã có kết quả truy xuất.
-
-Với Python 3.12, từ thư mục gốc trên Linux/macOS:
+Yêu cầu Python 3.11+, [uv](https://docs.astral.sh/uv/) và dữ liệu đặt trong `data/zalo_legal/`. Các file dữ liệu lớn không được commit trên GitHub.
 
 ```bash
-python3.12 -m venv .venv
-.venv/bin/python -m pip install -r requirements-terms-lock.txt
-.venv/bin/python scripts/prepare_data.py
-.venv/bin/python scripts/build_index.py --qrels data/zalo_legal_2021/qrels_test.tsv
-.venv/bin/python -B -m unittest discover -s tests -v
+uv sync --locked
+uv run python -X utf8 scripts/prepare_validation.py
+uv run python -X utf8 scripts/prepare_terms.py --workers 4
+uv run python -X utf8 scripts/build_retrieval_index.py --branch word --output-dir outputs/index/word
+uv run python -X utf8 scripts/evaluate_models.py --index-dir outputs/index/word --output-dir outputs/retrieval/val_word
+uv run python -m unittest discover -s tests -q
 ```
 
-Windows: dùng `py -3.12 -m venv .venv`, rồi thay `.venv/bin/python` bằng `.\.venv\Scripts\python.exe`. Nếu dùng uv: `uv venv --python 3.12 .venv`, sau đó `uv pip install --python .venv/bin/python -r requirements-terms-lock.txt`.
+Để đánh giá character n-gram, dùng `--branch char_ngram` và đường dẫn index tương ứng. Kết quả, index và validation split được lưu trong `outputs/` (Git-ignored), không ghi đè dữ liệu nguồn. Script từ chối ghi đè thư mục kết quả hiện có; khi chạy lại, chọn đường dẫn mới hoặc chủ động xử lý artifact cũ.
 
-Hai script mới từ chối output đã tồn tại để tránh ghi đè. Nếu dữ liệu/artifact đã có đầy đủ `manifest.json`, dùng lại; muốn build mới thì chọn `--output-dir` khác. Dữ liệu, cache, môi trường và ma trận nằm ngoài Git.
+**Đã kiểm chứng:** 37/37 unit tests, 67/67 dataset audit checks. Hướng dẫn chi tiết: [docs/model_evaluation.md](docs/model_evaluation.md).
 
-```text
-scripts/prepare_data.py       # Tải snapshot HF, xuất schema và chia query theo qrels
-scripts/build_index.py        # Fit corpus, transform query gốc
-src/data_io.py                # Đọc/kiểm tra JSONL và qrels
-src/terms/                   # VietnameseTerms, build_index, TermIndex.transform
-configs/terms.json           # Word + PyVi, giữ dấu/số, chưa loại stopword/DF
-requirements-terms*.txt      # Dependency riêng của phần dữ liệu/term
-learned/clean_terms.md       # Giải thích, lệnh chạy, schema artifact và bàn giao model
-outputs/terms/word_clean/    # Count/TF-IDF, vocabulary, ID, OOV, config và hash
-```
+## 6. Việc còn lại
 
-## 10. Chạy phần sinh nhiễu hiện có
+1. Chạy **16 cấu hình full-corpus** cho character n-gram + BM25/LSI.
+2. So sánh chất lượng clean và mức suy giảm theo noise; thực hiện tuning trên validation nếu cần.
+3. Kiểm tra thủ công liệu noise tổng hợp có làm thay đổi nghĩa query không.
+4. Chốt phương pháp và tham số rồi mới đánh giá test cuối cùng. Test đã từng được xem xét trong giai đoạn trước nên không được mô tả là hoàn toàn chưa từng tiếp xúc.
 
-Từ thư mục gốc dự án trên Windows:
-
-```powershell
-.\.venv\Scripts\python.exe scripts/generate_noise.py --input data/zalo_legal_2021/queries_clean.jsonl --qrels data/zalo_legal_2021/qrels_test.tsv --seed 42
-```
-
-Script chỉ dùng thư viện chuẩn Python. Mặc định script cũ đọc `configs/noise.json` và đường dẫn legacy `data/zalo_legal/queries_clean.jsonl`; với nguồn mới phải truyền `--input` như trên, kiểm tra với `qrels_test.tsv` cạnh file input nếu có, rồi ghi bảy file vào `data/zalo_legal_2021/noise/`. File sạch, corpus và qrels được giữ nguyên. Chạy lại sẽ ghi đè các file nhiễu và báo cáo được sinh từ script.
-
-Chỉ định đầy đủ đường dẫn và số mẫu:
-
-```powershell
-.\.venv\Scripts\python.exe scripts/generate_noise.py --input data/zalo_legal_2021/queries_clean.jsonl --config configs/noise.json --output-dir data/zalo_legal_2021/noise --report-dir outputs/noise --seed 42 --sample-size 10
-```
-
-| File | Nội dung |
-|---|---|
-| [configs/noise.json](configs/noise.json) | Seed, xác suất, từ điển và từ/đơn vị cần bảo vệ |
-| `outputs/noise/summary.md` | Tỷ lệ nhiễu thực tế và số query thay đổi |
-| `outputs/noise/stats.json` | Thống kê chi tiết, collision, phân bố loại lỗi và SHA-256 |
-| `outputs/noise/config_used.json` | Cấu hình thực tế của lần sinh |
-| `outputs/noise/samples.md` | Mẫu cặp sạch–nhiễu để rà soát |
-| `outputs/noise/*.changes.jsonl` | Log biến đổi theo query và vị trí token gốc |
-
-Chỉ số vị trí token và offset ký tự trong log bắt đầu từ 0, tính trên câu sạch. Mẫu rà soát lấy từ các query thực sự đổi, không đại diện cho tỷ lệ query thay đổi toàn tập.
-
-Sửa quy tắc trong config, tăng phiên bản, sinh lại và rà soát mẫu; không sửa ngầm từng câu trong file nhiễu sau khi đã chốt thí nghiệm.
-
-Chạy kiểm tra phần sinh nhiễu:
-
-```powershell
-.\.venv\Scripts\python.exe -B -m unittest discover -s tests -v
-```
-
-## 11. Phân công và quy tắc làm việc nhóm
-
-| Vai trò | Đầu ra cần bàn giao |
-|---|---|
-| Dữ liệu và biểu diễn term | Dữ liệu/schema, hai pipeline word/char n-gram, stopword, DF/IDF và vocabulary |
-| Sinh nhiễu | Quy tắc/từ điển, bảy file nhiễu, seed, log, thống kê và mẫu rà soát |
-| Mô hình truy xuất | VSM TF-IDF, BM25, LSI/SVD chạy được với cả hai nhánh term; cấu hình và ranked results |
-| Đánh giá và tích hợp | Chạy đủ ma trận thí nghiệm, metrics theo query, mức suy giảm, biểu đồ và phân tích lỗi |
-
-Nếu có người thứ năm, giao tổng quan tài liệu và biên tập báo cáo.
-
-- Thống nhất schema và giao diện giữa module trước khi tích hợp.
-- Dùng đường dẫn/tham số qua CLI hoặc cấu hình; tránh đường dẫn tuyệt đối theo máy cá nhân.
-- Lưu cấu hình cùng mỗi run; không ghi đè kết quả đã dùng trong báo cáo mà không giữ lại thông tin tái lập.
-- Repo chứa code, cấu hình, dependency, hướng dẫn và trích dẫn nguồn. Giữ dữ liệu đầy đủ, `.venv/`, cache, ma trận/chỉ mục và output lớn ngoài Git; bổ sung `.gitignore` trước khi commit.
-- Kiểm tra điều khoản dataset nguồn trước khi phân phối dữ liệu. Chỉ đưa mẫu nhỏ vào repo khi được phép.
-
-## 12. Điều kiện hoàn thành
-
-- [x] Có tập query sạch với 640 ID duy nhất và dữ liệu corpus/qrels tương ứng.
-- [ ] Sinh lại bảy file nhiễu cho bộ 640 query mới, giữ ID/thứ tự và cấu hình tái lập.
-- [ ] Xuất log, tỷ lệ nhiễu thực tế, collision và mẫu rà soát cho bộ dữ liệu mới.
-- [ ] Hoàn thành rà soát tính tự nhiên và bảo toàn ý định truy vấn của mẫu nhiễu.
-- [x] Hoàn thành nhánh word/PyVi, count/TF-IDF và vocabulary chỉ fit trên corpus.
-- [ ] Hoàn thành nhánh character n-gram.
-- [ ] Triển khai VSM TF-IDF/cosine, BM25 và LSI/SVD với cả hai nhánh term.
-- [ ] Chạy đủ 48 lượt đánh giá bằng corpus/qrels và cấu hình đã cố định.
-- [ ] Có MRR@10, nDCG@10, Recall@100, điểm sạch/nhiễu và hai cách tính suy giảm.
-- [ ] Có phân tích theo cặp query, loại/mức nhiễu và cách biểu diễn term.
-- [ ] Báo cáo giới hạn: nhiễu tổng hợp, độ phủ từ điển, qrels và khả năng khái quát ngoài miền pháp lý.
-- [x] Có hướng dẫn/dependency chạy phần dữ liệu và word terms.
-- [ ] Bổ sung hướng dẫn chạy retrieval và evaluation khi triển khai xong.
+**Trạng thái cuối cùng: Đã hoàn thành Term Representation và baseline Model Evaluation một phần; chưa hoàn thành Model Selection.**

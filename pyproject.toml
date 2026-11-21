@@ -1,0 +1,10 @@
+[project]
+name = "cs419-retrieval"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "pyvi==0.1.1",
+    "numpy>=1.24,<3",
+    "scipy>=1.11,<2",
+    "scikit-learn>=1.4,<2",
+]
