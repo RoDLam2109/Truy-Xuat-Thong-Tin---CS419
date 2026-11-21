@@ -100,9 +100,9 @@ def prepare(input_dir, output_dir, config, workers=1):
                         dfs["char_ngram"].update(set(char_terms(row["text"], config["ngram_range"])))
                     count += 1
                     if count % 5000 == 0:
-                        print(f"{relative}: {count:,} dòng", flush=True)
+                        print(f"{relative}: {count:,} rows processed", flush=True)
             stats[str(relative)] = count
-            print(f"Hoàn thành {relative}: {count:,} dòng", flush=True)
+            print(f"Finished {relative}: {count:,} rows", flush=True)
     n_docs = stats["corpus.jsonl"]
     vocab_stats = {}
     for branch, df in dfs.items():
