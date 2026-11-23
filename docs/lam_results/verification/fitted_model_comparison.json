@@ -1,0 +1,38 @@
+[
+  {
+    "branch": "word",
+    "model": "vsm",
+    "val_sha256": "d791ca7351703e5aa8495fda3a0e09ee59930ca20baee4e6d57e24df23d1c3d5",
+    "test_sha256": "d791ca7351703e5aa8495fda3a0e09ee59930ca20baee4e6d57e24df23d1c3d5"
+  },
+  {
+    "branch": "word",
+    "model": "bm25",
+    "val_sha256": "52d08b8d2634676e849b70b535fa14bf0ab9cfc445188cd300f3a88500e3c599",
+    "test_sha256": "52d08b8d2634676e849b70b535fa14bf0ab9cfc445188cd300f3a88500e3c599"
+  },
+  {
+    "branch": "word",
+    "model": "lsi",
+    "val_sha256": "e07b49696314e6b3b707a9ff5aecfa410d386c408ea93977df0c724646c4494f",
+    "test_sha256": "e07b49696314e6b3b707a9ff5aecfa410d386c408ea93977df0c724646c4494f"
+  },
+  {
+    "branch": "char_ngram",
+    "model": "vsm",
+    "val_sha256": "382c17a275852d68bfe246eb781c64b70b4f2c6cc6ca3fceaa2afb0d607231c0",
+    "test_sha256": "382c17a275852d68bfe246eb781c64b70b4f2c6cc6ca3fceaa2afb0d607231c0"
+  },
+  {
+    "branch": "char_ngram",
+    "model": "bm25",
+    "val_sha256": "a2d7fa88f43cc492e9e870108e4d4689820ef4db4a5c1e9c8e9a70088a357a09",
+    "test_sha256": "a2d7fa88f43cc492e9e870108e4d4689820ef4db4a5c1e9c8e9a70088a357a09"
+  },
+  {
+    "branch": "char_ngram",
+    "model": "lsi",
+    "val_sha256": "0ba379d35616b2462d24346a6bdde7c43a94087cdb9454f805ee8ae53f1533a2",
+    "test_sha256": "0ba379d35616b2462d24346a6bdde7c43a94087cdb9454f805ee8ae53f1533a2"
+  }
+]

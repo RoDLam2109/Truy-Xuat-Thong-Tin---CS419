@@ -2,14 +2,21 @@
 
 Đồ án CS419 nghiên cứu mức suy giảm chất lượng truy xuất tài liệu pháp luật khi câu truy vấn tiếng Việt chứa lỗi gõ, viết tắt, bỏ dấu hoặc nhiễu hỗn hợp.
 
-## 1. Nhóm đã làm được gì?
+## 1. Trạng thái hoàn thành
 
-| Phần việc | Đã triển khai | Kết quả hiện tại | Đã chốt phương pháp tốt nhất? |
-|---|---|---|---|
-| **Term Representation** (phần phụ trách term) | Word/PyVi và character n-gram 3–5; lọc vocabulary bằng DF | **16.498 word terms** và **111.181 char n-grams** | **Chưa.** Đã tạo hai biểu diễn để so sánh, chưa chọn một biểu diễn tối ưu |
-| **Model Evaluation** (nhánh này) | VSM, BM25, LSI; mỗi mô hình kết hợp với từng biểu diễn | **32/48** cấu hình validation đã chạy; **BM25 + word** có điểm clean tốt nhất trong các cấu hình đã đo | **Chưa.** Mới có baseline, chưa tuning và đánh giá hết các ứng viên |
+**Đã hoàn thành phần code, tích hợp và chạy thí nghiệm baseline:** đủ **48/48 lượt validation và 48/48 lượt test** trên toàn bộ corpus. Cập nhật README ngày **23/11/2026** theo kết quả chạy ngày 21/11/2026.
 
-**Kết luận hiện tại:** với 482 validation queries, **BM25 + word** đạt **nDCG@10 = 0.6626** trên query clean, cao nhất trong những cấu hình đã chạy. **Character n-gram + VSM** cải thiện so với word + VSM khi gặp lỗi Telex và nhiễu hỗn hợp; nhưng việc bỏ dấu vẫn làm giảm điểm rất mạnh. Đây là **kết quả validation**, không phải mô hình đã được chọn cuối cùng.
+| Phần việc | Trạng thái | Kết quả |
+|---|---|---|
+| **Term Representation** | Hoàn thành | Word/PyVi và character n-gram 3–5; vocabulary gồm **16.498 word terms** và **111.181 char n-grams** |
+| **Retrieval Models** | Hoàn thành | VSM, BM25, LSI chạy với cả hai biểu diễn term |
+| **Nhiễu và tích hợp** | Hoàn thành pipeline | Clean và 7 điều kiện nhiễu; giữ nguyên ID, thứ tự query và qrels |
+| **Metrics và báo cáo** | Hoàn thành | MRR@10, nDCG@10, Recall@100, suy giảm, ranking, bảng, biểu đồ và phân tích lỗi |
+| **Thí nghiệm** | Hoàn thành | 482 query/lượt validation; 788 query/lượt test; **61.425 documents** dùng chung |
+
+**Kết quả chính:** Word + BM25 có clean nDCG@10 cao nhất: **0.6626 trên validation**, **0.6444 trên test**. Theo tiêu chí trung bình nDCG@10 trên bảy điều kiện nhiễu đã ghi trước khi chạy validation, **character n-gram + BM25** đứng đầu: **0.4915 trên validation**, **0.4990 trên test**. Tiêu chí này cần nhóm xác nhận trước khi dùng làm kết luận lựa chọn chính thức.
+
+Xem [tổng hợp kết quả đầy đủ](docs/lam_metrics_results.md), [báo cáo validation](docs/lam_results/val/report.md) và [báo cáo test](docs/lam_results/test/report.md).
 
 ## 2. Term đã được chọn như thế nào?
 
@@ -32,39 +39,39 @@ Cách tách term, cấu hình, ví dụ và artifact: [PREPROCESSING.md](PREPROC
 | **BM25** | Term frequency, IDF và độ dài document | `k1=1.2`, `b=0.75` |
 | **LSI** | TF-IDF → TruncatedSVD → cosine similarity | 64 chiều, seed 42 |
 
-Mỗi mô hình dự kiến chạy với **cả Word và Character n-gram**, trên **8 điều kiện query** (clean + 7 loại nhiễu). Tổng thiết kế: **2 × 3 × 8 = 48** cấu hình.
+Mỗi mô hình đã chạy với **cả Word và Character n-gram**, trên **8 điều kiện query** (clean + 7 loại nhiễu). Tổng thiết kế: **2 × 3 × 8 = 48 lượt cho mỗi split**.
 
-| Tổ hợp model/term | Clean nDCG@10 | Trạng thái |
-|---|---:|---|
-| Word + VSM | 0.5008 | Đã chạy 8/8 điều kiện |
-| **Word + BM25** | **0.6626** | Đã chạy 8/8 điều kiện |
-| Word + LSI | 0.2420 | Đã chạy 8/8 điều kiện |
-| Character n-gram + VSM | 0.4833 | Đã chạy 8/8 điều kiện |
-| Character n-gram + BM25 | — | Chưa chạy full-corpus |
-| Character n-gram + LSI | — | Chưa chạy full-corpus |
+| Tổ hợp model/term | Validation clean nDCG@10 | Test clean nDCG@10 | Trạng thái |
+|---|---:|---:|---|
+| Word + VSM | 0.5008 | 0.4484 | Đủ 8/8 điều kiện ở mỗi split |
+| **Word + BM25** | **0.6626** | **0.6444** | Đủ 8/8 điều kiện ở mỗi split |
+| Word + LSI | 0.2420 | 0.2122 | Đủ 8/8 điều kiện ở mỗi split |
+| Character n-gram + VSM | 0.4833 | 0.4596 | Đủ 8/8 điều kiện ở mỗi split |
+| Character n-gram + BM25 | 0.6267 | 0.6308 | Đủ 8/8 điều kiện ở mỗi split |
+| Character n-gram + LSI | 0.2637 | 0.2446 | Đủ 8/8 điều kiện ở mỗi split |
 
-Dấu **—** nghĩa là **chưa có kết quả**, không phải điểm 0. Các mô hình hiện tại **không train trên query–qrel pairs**: vocabulary, IDF, BM25 statistics và SVD được xây dựng từ corpus. Qrels được dùng để **tính metrics** trên validation. Chưa có supervised training hoặc hyperparameter search.
+Vocabulary, IDF, BM25 statistics và SVD được xây dựng từ corpus. Query sạch/nhiễu chỉ transform và truy xuất; qrels dùng để tính metrics. Các baseline dùng tham số cố định, không có supervised training hoặc hyperparameter search. Cấu hình lựa chọn theo validation được lưu trong [selection.json](docs/lam_results/val/selection.json) trước khi chạy test; không chọn lại cấu hình theo điểm test.
 
-Mã nguồn: [src/retrieval/models.py](src/retrieval/models.py), [scripts/evaluate_models.py](scripts/evaluate_models.py).
+Mã nguồn: [src/retrieval/models.py](src/retrieval/models.py), [scripts/run_experiments.py](scripts/run_experiments.py), [src/evaluation/runs.py](src/evaluation/runs.py), [scripts/report_experiments.py](scripts/report_experiments.py).
 
 ### So sánh robustness: nDCG@10
 
 Cùng 482 validation queries, toàn bộ corpus 61.425 documents:
 
-| Điều kiện | Word VSM | Word BM25 | Word LSI | Char VSM |
-|---|---:|---:|---:|---:|
-| **Clean** | 0.5008 | **0.6626** | 0.2420 | 0.4833 |
-| No diacritics | 0.0209 | 0.0297 | 0.0019 | 0.0219 |
-| Telex typo | 0.3263 | **0.4725** | 0.1376 | 0.4216 |
-| Phonetic | 0.4925 | **0.6511** | 0.2325 | 0.4803 |
-| Abbreviation | 0.5004 | **0.6589** | 0.2358 | 0.4785 |
-| Mixed low | 0.4198 | **0.5875** | 0.1914 | 0.4528 |
-| Mixed medium | 0.3119 | **0.4698** | 0.1204 | 0.3996 |
-| Mixed high | 0.2284 | 0.3534 | 0.0803 | **0.3542** |
+| Điều kiện | Word VSM | Word BM25 | Word LSI | Char VSM | Char BM25 | Char LSI |
+|---|---:|---:|---:|---:|---:|---:|
+| **Clean** | 0.5008 | **0.6626** | 0.2420 | 0.4833 | 0.6267 | 0.2637 |
+| No diacritics | 0.0209 | 0.0297 | 0.0019 | 0.0219 | **0.0423** | 0.0059 |
+| Telex typo | 0.3263 | 0.4725 | 0.1376 | 0.4216 | **0.5435** | 0.2023 |
+| Phonetic | 0.4925 | **0.6511** | 0.2325 | 0.4803 | 0.6250 | 0.2622 |
+| Abbreviation | 0.5004 | **0.6589** | 0.2358 | 0.4785 | 0.6248 | 0.2554 |
+| Mixed low | 0.4198 | 0.5875 | 0.1914 | 0.4528 | **0.5980** | 0.2257 |
+| Mixed medium | 0.3119 | 0.4698 | 0.1204 | 0.3996 | **0.5317** | 0.1858 |
+| Mixed high | 0.2284 | 0.3534 | 0.0803 | 0.3542 | **0.4756** | 0.1560 |
 
-**Nhận xét:** BM25 + word hiện đứng đầu về clean, MRR@10 và Recall@100 trong các baseline đã thử. Char VSM tốt hơn Word VSM khi có lỗi Telex và mixed noise, nhưng clean thấp hơn. Không thể gọi BM25 + word là mô hình cuối cùng khi vẫn còn 16 cấu hình chưa đánh giá.
+**Nhận xét:** Word + BM25 tốt nhất trên clean; character n-gram + BM25 có trung bình noisy nDCG@10 tốt nhất và chịu nhiễu Telex/mixed tốt hơn Word + BM25 trong lần chạy này. Bỏ dấu vẫn làm giảm điểm mạnh ở cả sáu baseline. Phonetic và abbreviation có nhiều query không đổi nên báo cáo bổ sung cả điểm trên query thực sự thay đổi.
 
-Bảng MRR@10, Recall@100, phân tích và nguồn artifact: [docs/validation_results.md](docs/validation_results.md).
+Bảng đủ ba metrics: [validation](docs/lam_results/val/report.md), [test](docs/lam_results/test/report.md). Phân tích: [docs/lam_error_analysis.md](docs/lam_error_analysis.md). Các tài liệu [validation_results.md](docs/validation_results.md) và [model_evaluation.md](docs/model_evaluation.md) giữ nội dung giai đoạn trước, khi mới chạy 32/48 lượt; kết quả cập nhật nằm trong [lam_metrics_results.md](docs/lam_metrics_results.md).
 
 ## 4. Dataset và lý do có validation split
 
@@ -75,7 +82,7 @@ Sử dụng [GreenNode Zalo Legal Retrieval](https://huggingface.co/datasets/Gre
 | Train chuẩn hóa từ GreenNode | 2.408 | 2.480 | Nguồn tạo development split |
 | Development train (80%) | 1.926 | 1.985 | Đã tạo nhưng **chưa dùng** trong baseline hiện tại |
 | **Validation (20%)** | **482** | **495** | **Đang dùng thực tế** để so sánh mô hình và noise |
-| Test giữ nguyên | 788 | 793 | **Chưa chạy đánh giá cuối cùng** |
+| Test giữ nguyên | 788 | 793 | **Đã đánh giá đủ 48/48 lượt** sau khi khóa cấu hình theo validation |
 
 Corpus **61.425 documents dùng chung** cho tất cả các tập query. Split 80/20 được **bổ sung trên nhánh model-evaluation**, không thay đổi file train/test đã chốt của nhóm. Seed 42 và nhóm theo nội dung query chuẩn hóa; 7 bộ noise validation được sinh riêng. Không dùng test để chọn tham số.
 
@@ -85,24 +92,30 @@ Chi tiết dữ liệu và đường dẫn: [data/README.md](data/README.md).
 
 Yêu cầu Python 3.11+, [uv](https://docs.astral.sh/uv/) và dữ liệu đặt trong `data/zalo_legal/`. Các file dữ liệu lớn không được commit trên GitHub.
 
-```bash
+```powershell
 uv sync --locked
-uv run python -X utf8 scripts/prepare_validation.py
-uv run python -X utf8 scripts/prepare_terms.py --workers 4
-uv run python -X utf8 scripts/build_retrieval_index.py --branch word --output-dir outputs/index/word
-uv run python -X utf8 scripts/evaluate_models.py --index-dir outputs/index/word --output-dir outputs/retrieval/val_word
-uv run python -m unittest discover -s tests -q
+uv pip install --python .venv/Scripts/python.exe -r configs/evaluation-requirements.txt
+.\.venv\Scripts\python.exe -X utf8 -m unittest discover -s tests -q
 ```
 
-Để đánh giá character n-gram, dùng `--branch char_ngram` và đường dẫn index tương ứng. Kết quả, index và validation split được lưu trong `outputs/` (Git-ignored), không ghi đè dữ liệu nguồn. Script từ chối ghi đè thư mục kết quả hiện có; khi chạy lại, chọn đường dẫn mới hoặc chủ động xử lý artifact cũ.
+Các lệnh tạo split, vocabulary, index, chạy đủ 48 lượt validation/test và xuất báo cáo nằm trong [docs/lam_evaluation.md](docs/lam_evaluation.md). Runner hỗ trợ `--resume` với kiểm tra cấu hình và checksum để dùng lại lượt đã hoàn thành. Khi chạy mới, chọn thư mục đầu ra chưa tồn tại; không ghi đè dữ liệu hoặc kết quả cũ.
 
-**Đã kiểm chứng:** 37/37 unit tests, 67/67 dataset audit checks. Hướng dẫn chi tiết: [docs/model_evaluation.md](docs/model_evaluation.md).
+**Đã kiểm chứng:** **49/49 unit/integration tests**, **67/67 dataset audit checks**; 32 điểm nDCG@10 baseline cũ khớp ở bốn chữ số thập phân. Sáu model đã fit trùng SHA-256 giữa validation/test. Kết quả kiểm tra: [docs/lam_results/verification/](docs/lam_results/verification/).
 
-## 6. Việc còn lại
+## 6. Kết quả lưu ở đâu?
 
-1. Chạy **16 cấu hình full-corpus** cho character n-gram + BM25/LSI.
-2. So sánh chất lượng clean và mức suy giảm theo noise; thực hiện tuning trên validation nếu cần.
-3. Kiểm tra thủ công liệu noise tổng hợp có làm thay đổi nghĩa query không.
-4. Chốt phương pháp và tham số rồi mới đánh giá test cuối cùng. Test đã từng được xem xét trong giai đoạn trước nên không được mô tả là hoàn toàn chưa từng tiếp xúc.
+| Đường dẫn | Nội dung |
+|---|---|
+| [docs/lam_metrics_results.md](docs/lam_metrics_results.md) | Tổng hợp kết quả và trạng thái hoàn thành |
+| [docs/lam_results/val/](docs/lam_results/val/) và [docs/lam_results/test/](docs/lam_results/test/) | Snapshot bảng CSV, báo cáo, biểu đồ và mẫu lỗi để chia sẻ trong repo |
+| `outputs/lam/experiments/<val hoặc test>/<term>/<model>/<condition>/` | Ranking, query status và metrics từng lượt |
+| `outputs/lam/reports/<val hoặc test>/` | `summary.csv`, `paired_drops.csv`, `worst_queries.csv`, báo cáo và biểu đồ đầy đủ |
+| `outputs/lam/index/`, `outputs/lam/processed/`, `outputs/lam/splits/seed42/` | Index, vocabulary, dữ liệu đã xử lý và split |
 
-**Trạng thái cuối cùng: Đã hoàn thành Term Representation và baseline Model Evaluation một phần; chưa hoàn thành Model Selection.**
+Artifact lớn trong `outputs/` được Git bỏ qua. Code, cấu hình và snapshot báo cáo nhỏ trong `docs/lam_results/` dùng để bàn giao qua GitHub; dữ liệu/index/model/ranking đầy đủ có thể chia sẻ qua Drive hoặc tái tạo theo hướng dẫn.
+
+## 7. Xác nhận kết luận và giới hạn
+
+Phần triển khai và thí nghiệm baseline đã hoàn thành. Nhóm cần xác nhận tiêu chí lựa chọn chính thức và đọc lại các mẫu nhiễu có nguy cơ đổi nghĩa trong [docs/lam_noise_review.md](docs/lam_noise_review.md). Tài liệu hiện có nhận xét đọc mẫu của trợ lý, chưa phải xác nhận ngữ nghĩa độc lập của nhóm.
+
+Chưa tuning tham số hoặc kiểm định ý nghĩa thống kê; đây là các hướng mở rộng. Test đã từng được xem xét trong giai đoạn trước nên không được mô tả là hoàn toàn chưa từng tiếp xúc. Mọi kết luận robustness cần xem đồng thời điểm sạch, điểm nhiễu, tỷ lệ query thực sự thay đổi và giới hạn của qrels.

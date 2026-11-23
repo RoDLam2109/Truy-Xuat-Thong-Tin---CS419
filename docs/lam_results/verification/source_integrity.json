@@ -1,0 +1,18 @@
+{
+  "canonical_file_checks": {
+    "corpus.jsonl": true,
+    "queries_clean.jsonl": true,
+    "qrels_test.tsv": true,
+    "queries_train.jsonl": true,
+    "qrels_train.tsv": true,
+    "train_manifest.json": true,
+    "noise/queries_abbrev.jsonl": true,
+    "noise/queries_mixed_high.jsonl": true,
+    "noise/queries_mixed_low.jsonl": true,
+    "noise/queries_mixed_medium.jsonl": true,
+    "noise/queries_no_diacritics.jsonl": true,
+    "noise/queries_phonetic.jsonl": true,
+    "noise/queries_telex_typo.jsonl": true
+  },
+  "all_original_tracked_files_unchanged": true
+}

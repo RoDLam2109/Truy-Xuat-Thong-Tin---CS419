@@ -1,0 +1,25 @@
+{
+  "split": "val",
+  "completed_runs": 48,
+  "selection_rule": "mean noisy nDCG@10 across all seven conditions; tie: clean nDCG@10, branch, model",
+  "selected": {
+    "branch": "char_ngram",
+    "model": "bm25",
+    "mean_noisy_ndcg": 0.49154194044926675,
+    "clean_ndcg": 0.6267015802280586
+  },
+  "protocol": {
+    "bm25_k1": 1.2,
+    "bm25_b": 0.75,
+    "svd_dim": 64,
+    "seed": 42,
+    "top_k": 100
+  },
+  "indexes": {
+    "word": "12d0e581de6194a4168aa4854eaf24e7fe67eb40a0831738535fc3ab492c4ba9",
+    "char_ngram": "a4e4fb73a46e91740958ee850919e6c66a076379b692b26f1e337a1313bf0562"
+  },
+  "raw_corpus_sha256": "dda9c3f0c09627c1a5f2f921384d1c55b6b9775d67ad7254a5bd7a6a119cb9af",
+  "manifest_sha256": "a30d021d6818262080dd01fcc1e08c172ba142555e7510e73b350c579864ebe2",
+  "summary_sha256": "6145be7d0361c712b9204165b9ce14ef6a7e77b634fbc73929a1a4544722653f"
+}

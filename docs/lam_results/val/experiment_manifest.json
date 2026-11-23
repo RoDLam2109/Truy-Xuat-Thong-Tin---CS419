@@ -1,0 +1,69 @@
+{
+  "config": {
+    "split": "val",
+    "branches": [
+      "word",
+      "char_ngram"
+    ],
+    "models": [
+      "vsm",
+      "bm25",
+      "lsi"
+    ],
+    "conditions": [
+      "clean",
+      "no_diacritics",
+      "telex_typo",
+      "phonetic",
+      "abbrev",
+      "mixed_low",
+      "mixed_medium",
+      "mixed_high"
+    ],
+    "protocol": {
+      "bm25_k1": 1.2,
+      "bm25_b": 0.75,
+      "svd_dim": 64,
+      "seed": 42,
+      "top_k": 100
+    },
+    "batch_size": 16,
+    "selection_rule": "mean noisy nDCG@10 across all seven conditions; tie: clean nDCG@10, branch, model",
+    "queries_sha256": {
+      "clean": "3cb16aa4ce051b49553b6c53035b50b0b7ae31737c842a102c4d28ae172983ea",
+      "no_diacritics": "ae073721255267a609aeb63ad9d82ee6fc520b52cf00d90216d8f1b0fc8cf597",
+      "telex_typo": "720c74bce1da41bd56652bbe53ed557eb2684e31dd8b57c5924433675c79cbe2",
+      "phonetic": "e3853ce53aa7a05a8497e22954a56ad9b03fa074f62273806b5ac34268dfa5d2",
+      "abbrev": "50eae007ebbf6575a1f7ebb6fee92678e9c8f30da0a006929b37ca400b7f3866",
+      "mixed_low": "53855715d52631f17f87a82c52b252259c1e0d257bbb136cbb2e216cbbae4927",
+      "mixed_medium": "6543bfedbb490ba455f0f15c6a7780de0e209a32911afa28efe68867ca8ebb53",
+      "mixed_high": "42896ede7b9e67eb74661934a8e14cb0b217dbfee710fe2dd6143e7b7fc3e551"
+    },
+    "qrels_sha256": "273e049d5d7a1305a7c85c7866074f802fe9687beeb89e1e6e13495666ce1652",
+    "raw_corpus_sha256": "dda9c3f0c09627c1a5f2f921384d1c55b6b9775d67ad7254a5bd7a6a119cb9af",
+    "indexes": {
+      "word": "12d0e581de6194a4168aa4854eaf24e7fe67eb40a0831738535fc3ab492c4ba9",
+      "char_ngram": "a4e4fb73a46e91740958ee850919e6c66a076379b692b26f1e337a1313bf0562"
+    },
+    "selection_sha256": null,
+    "code_sha256": {
+      "scripts/run_experiments.py": "66968de78174497d691630a6921dce0ccabdc0c187162b75c92ac35ff8962b15",
+      "src/evaluation/runs.py": "dc9d64b6b485b98ae090ae44abae531a1cb6a6d044e6ab94800420bb4fe1f195",
+      "src/retrieval/models.py": "5e72f68e0bb82506715eabb96544133b9be6c81483de4fec369d7943612ef9b1",
+      "src/retrieval/feature_matrix.py": "9725067f71a6c639f230c5a70f72593a8c7e487def05589849855b4ba278b9b5",
+      "src/retrieval/evaluation.py": "6d6f7489312e5f13f5465d202346f1fc57a69554720860c1ba735b86fd462acc",
+      "scripts/prepare_terms.py": "c650b0cfb3d97f89a1089e34f1461f8ec98a5f8dea0e15e732a57d6ab1067365",
+      "scripts/evaluate_models.py": "55cee014542941381d17ed8ea44d428314651e5c33bf987478f7ca058724b647"
+    },
+    "versions": {
+      "numpy": "2.4.6",
+      "scipy": "1.17.1",
+      "scikit-learn": "1.9.1",
+      "pyvi": "0.1.1",
+      "joblib": "1.6.0"
+    },
+    "python": "3.11.15"
+  },
+  "git_revision": "796458a3db0f3141b2a6bf864d1bffa3b7cd0918",
+  "expected_runs": 48
+}
