@@ -1,5 +1,7 @@
 # Kết quả hoàn thành phần Lam — 21/11/2026
 
+**Bản kết quả cũ:** các điểm dưới đây dùng bỏ dấu toàn câu. Ngày 24/11/2026, điều kiện bỏ dấu đã đổi sang một phần; vẫn đủ tám điều kiện và số query như cũ. Chưa có điểm metrics cập nhật cho bộ bỏ dấu mới. Xem [thay đổi dữ liệu và cách chạy lại](lam_partial_diacritics.md).
+
 Đã hoàn thành pipeline nhiễu/metrics/tích hợp bằng các file mới, dùng lại toàn bộ code term, model và công thức metrics đang có. Không sửa README, TEAM_TASKS, cấu hình, code hoặc dữ liệu đã chốt trước phiên làm việc.
 
 ## Phạm vi đã chạy

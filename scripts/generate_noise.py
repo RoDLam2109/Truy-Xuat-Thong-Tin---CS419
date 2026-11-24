@@ -17,7 +17,7 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-GENERATOR_VERSION = "1.0.0"
+GENERATOR_VERSION = "1.1.0"
 KINDS = ("no_diacritics", "telex_typo", "phonetic", "abbrev")
 TONE_KEYS = {
     "\u0301": ("s", "1"),
@@ -228,14 +228,10 @@ def generate_query(row, tokens, condition, probability, seed):
     for token in tokens:
         raw, replacement = token["raw"], token["raw"]
         if token["counted"]:
-            if condition == "no_diacritics":
-                plain = strip_diacritics(raw)
-                options = {"no_diacritics": [(plain, "strip_diacritics")]} if plain != raw else {}
-            else:
-                options = token["options"] if mixed else {
-                    condition: token["options"][condition]
-                } if condition in token["options"] else {}
-                protected += int(token["protected"] is not None)
+            options = token["options"] if mixed else {
+                condition: token["options"][condition]
+            } if condition in token["options"] else {}
+            protected += int(token["protected"] is not None)
             eligible += bool(options)
             # Hai lượt RNG riêng: khi tăng mức mixed, các vị trí cũ giữ
             # nguyên biến thể; chỉ bổ sung các vị trí được chọn thêm.
@@ -333,7 +329,7 @@ def generate(args):
         validate_qrels(qrels, rows)
     output_dir = args.output_dir if args.output_dir is not None else args.input.parent / "noise"
     # Kiểm tra mọi đường dẫn trước khi ghi để không ghi đè đầu vào.
-    conditions = [(kind, 1.0 if kind == "no_diacritics" else config["single_probability"]) for kind in KINDS]
+    conditions = [(kind, config["single_probability"]) for kind in KINDS]
     conditions.extend((f"mixed_{level}", config["mixed_probabilities"][level]) for level in ("low", "medium", "high"))
     inputs = {args.input.resolve(), args.config.resolve()}
     if qrels is not None:
@@ -400,7 +396,7 @@ def generate(args):
         "", "Tỷ lệ token tính trên token gốc chứa chữ hoặc số; không ép mỗi câu phải có lỗi.",
         "Mức mixed dùng cùng lượt chọn và cùng biến thể ở các vị trí chung; low là tập con của medium và high.",
         "Telex/VNI chỉ mô phỏng thiếu phím dấu/phím tạo chữ và phím dấu còn dạng thô.",
-        "Bỏ dấu toàn câu áp dụng cả tên riêng; các điều kiện khác bảo vệ token có số, mã/ký hiệu, viết hoa và đơn vị tiền đã cấu hình.",
+        "Bỏ dấu chỉ áp dụng trên token được chọn với single_probability; giữ nguyên token không được chọn. Tất cả điều kiện bảo vệ token có số, mã/ký hiệu, viết hoa và đơn vị tiền đã cấu hình.",
         "Bảo vệ tên riêng là heuristic, không bảo đảm nhận diện hết thực thể. Các cặp phát âm có thể mơ hồ về nghĩa, cần đọc mẫu trong ngữ cảnh.",
         "Xem stats.json để biết token không áp dụng được, phân bố loại lỗi và nhóm trùng văn bản.", "",
     ])

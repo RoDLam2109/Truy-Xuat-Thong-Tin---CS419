@@ -2,6 +2,10 @@
 
 Đồ án CS419 nghiên cứu mức suy giảm chất lượng truy xuất tài liệu pháp luật khi câu truy vấn tiếng Việt chứa lỗi gõ, viết tắt, bỏ dấu hoặc nhiễu hỗn hợp.
 
+**Cập nhật 24/11/2026:** giữ đủ **8 điều kiện**, **482 query validation** và **788 query test**. Chỉ thay nhiễu `no_diacritics`: chọn token với xác suất 25% để bỏ dấu, thay vì bỏ dấu cả câu; sáu bộ nhiễu còn lại giữ nguyên. File đang dùng vẫn là `data/zalo_legal/noise/queries_no_diacritics.jsonl` và `outputs/lam/splits/seed42/val/noise/queries_no_diacritics.jsonl`. Bản cũ lưu trong `outputs/lam/archive/legacy_noise/`. Chi tiết và cách chạy: [bỏ dấu một phần](docs/lam_partial_diacritics.md).
+
+**Các điểm metrics bên dưới thuộc lần chạy trước khi thay bộ bỏ dấu.** Cần chạy thí nghiệm vào thư mục mới để có điểm cập nhật; không dùng điểm bỏ dấu cũ để đánh giá dữ liệu mới. Bộ thử riêng 230 câu đã được lưu vào archive và không phải đầu vào chính.
+
 ## 1. Trạng thái hoàn thành
 
 **Đã hoàn thành phần code, tích hợp và chạy thí nghiệm baseline:** đủ **48/48 lượt validation và 48/48 lượt test** trên toàn bộ corpus. Cập nhật README ngày **23/11/2026** theo kết quả chạy ngày 21/11/2026.

@@ -2,6 +2,8 @@
 
 Chỉ dùng thư mục `data/zalo_legal/` trong code và thí nghiệm.
 
+**Cập nhật 24/11/2026:** vẫn có 7 bộ nhiễu và một bản sạch. Riêng `noise/queries_no_diacritics.jsonl` nay **chỉ bỏ dấu trên các token được chọn với xác suất 25%**, không bỏ dấu toàn câu. Giữ đủ 788 query test, cùng ID/thứ tự/qrels; sáu bộ nhiễu còn lại giữ nguyên. Bản bỏ dấu toàn câu trước đây lưu tại `outputs/lam/archive/legacy_noise/data/zalo_legal/noise/queries_no_diacritics.jsonl`. Xem [hướng dẫn bộ bỏ dấu một phần](../docs/lam_partial_diacritics.md).
+
 | File | Nội dung |
 |---|---|
 | `corpus.jsonl` | 61.425 tài liệu |
@@ -17,7 +19,7 @@ Nguồn: [GreenNode/zalo-ai-legal-text-retrieval-vn](https://huggingface.co/data
 
 Train đã loại 24 query ID trùng test, tương ứng 25 qrels. Không có ID hoặc nội dung query chuẩn hóa trùng giữa train và test. Việc kiểm tra cấu trúc không xác minh lại ý nghĩa của từng nhãn.
 
-Chưa có validation riêng. Nếu cần tuning, chia validation từ train với seed cố định và chia sẻ cùng danh sách ID cho cả nhóm. Vocabulary, IDF và SVD được fit trên corpus; query test và qrels test chỉ dùng đánh giá cuối cùng.
+Validation đã chia từ train với seed 42: 482 query, 495 qrels tại `outputs/lam/splits/seed42/val/`. Bảy bộ nhiễu validation dùng cùng 482 ID; riêng bỏ dấu cũng áp dụng xác suất 25% trên token. Vocabulary, IDF và SVD được fit trên corpus; qrels dùng để đánh giá.
 
 ## Phân biệt dữ liệu gốc và dữ liệu nhiễu
 
@@ -27,7 +29,7 @@ Chưa có validation riêng. Nếu cần tuning, chia validation từ train vớ
 |---|---|---|
 | Train gốc, chưa thêm nhiễu | `queries_train.jsonl` | 2.408 câu hỏi để phát triển model hoặc chia validation |
 | Test gốc, chưa thêm nhiễu | `queries_clean.jsonl` | 788 câu hỏi để đo kết quả ban đầu |
-| Test nhiễu: bỏ dấu | `noise/queries_no_diacritics.jsonl` | Bỏ dấu tiếng Việt |
+| Test nhiễu: bỏ dấu | `noise/queries_no_diacritics.jsonl` | Bỏ dấu một phần, chọn token với xác suất 25% |
 | Test nhiễu: lỗi gõ | `noise/queries_telex_typo.jsonl` | Lỗi gõ dấu/tạo chữ |
 | Test nhiễu: chính tả/phát âm | `noise/queries_phonetic.jsonl` | Thay từ theo các dạng nhầm lẫn |
 | Test nhiễu: viết tắt | `noise/queries_abbrev.jsonl` | Viết tắt/teencode |
@@ -37,7 +39,7 @@ Chưa có validation riêng. Nếu cần tuning, chia validation từ train vớ
 
 Mỗi file test nhiễu có 788 dòng, giữ cùng ID và thứ tự với `queries_clean.jsonl`. Một số câu có thể không đổi nếu phép sinh nhiễu không áp dụng được hoặc không chọn token để sửa.
 
-`corpus.jsonl` là kho tài liệu chung, không thêm nhiễu. `qrels_train.tsv` là nhãn train; `qrels_test.tsv` là nhãn chung cho test gốc và cả 7 test nhiễu. Không có bộ train nhiễu hay validation riêng hiện tại. `train_manifest.json` chỉ ghi thông tin kiểm tra dữ liệu.
+`corpus.jsonl` là kho tài liệu chung, không thêm nhiễu. `qrels_train.tsv` là nhãn train; `qrels_test.tsv` là nhãn chung cho test gốc và cả 7 test nhiễu. Validation có qrels riêng theo tập ID đã chia; không có bộ train nhiễu. `train_manifest.json` ghi nguồn và checksum; checksum bộ bỏ dấu đã cập nhật theo dữ liệu mới.
 
 Khi đánh giá: chạy test gốc và từng test nhiễu trên cùng corpus, cùng model và cùng qrels test, rồi so sánh điểm. Không gộp các phiên bản test nhiễu vào train.
 
@@ -47,4 +49,4 @@ Git lưu tài liệu và manifest; các file dữ liệu lớn được bỏ qua
 
 Không thay bằng file tải mới từ nhánh `main` của nguồn: cách chia train/test và định dạng có thể khác bản nhóm đã chốt. Giữ nguyên ID tài liệu, kể cả ký tự `+`.
 
-Các file nhiễu hiện có được giữ nguyên từ bản Lam v1. Script `scripts/generate_noise.py` có thể sinh lại và sẽ ghi đè các file đó; chỉ chạy khi nhóm chủ động cập nhật điều kiện nhiễu.
+Sáu file nhiễu khác giữ nguyên từ bản Lam v1. Script `scripts/generate_noise.py` phiên bản 1.1.0 sinh lại bảy điều kiện, với bỏ dấu một phần; script sẽ ghi đè khi chọn thư mục output đã tồn tại. Các điểm metrics trước thay đổi thuộc bộ cũ, cần chạy lại để đánh giá bộ bỏ dấu mới.

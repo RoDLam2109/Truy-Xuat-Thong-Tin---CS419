@@ -25,9 +25,7 @@ def noise_coverage(query_sets, config):
     analyzed = generate_noise.analyze_queries(clean, config)
     result = []
     for condition in CONDITIONS[1:]:
-        if condition == "no_diacritics":
-            probability = 1.0
-        elif condition.startswith("mixed_"):
+        if condition.startswith("mixed_"):
             probability = config["mixed_probabilities"][condition.removeprefix("mixed_")]
         else:
             probability = config["single_probability"]

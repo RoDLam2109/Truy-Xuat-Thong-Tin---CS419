@@ -1,5 +1,7 @@
 # Bàn giao phần nhiễu, metrics và tích hợp của Lam
 
+**Cập nhật 24/11/2026:** vẫn chạy 48 lượt trên tám điều kiện, giữ đủ 482 query validation và 788 query test. Riêng bỏ dấu đã chuyển sang chọn token với xác suất 25%; term/model và sáu bộ nhiễu còn lại giữ nguyên. Kết quả ngày 21/11 bên dưới thuộc dữ liệu trước thay đổi. Dùng các thư mục output mới và lệnh trong [lam_partial_diacritics.md](lam_partial_diacritics.md) để đánh giá lại.
+
 Tài liệu bổ sung ngày 21/11/2026. Các file có trước phiên làm việc được giữ nguyên, gồm README, TEAM_TASKS, cấu hình dữ liệu/term/noise, code tiền xử lý, mô hình và công thức metrics.
 
 Kết quả đã chạy đủ 48 lượt validation và 48 lượt test: [lam_metrics_results.md](lam_metrics_results.md).
