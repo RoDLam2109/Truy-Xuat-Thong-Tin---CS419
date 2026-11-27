@@ -1,0 +1,2 @@
+# Additional plotting dependency for Lam's reports; core dependencies use uv.lock.
+matplotlib==3.11.2

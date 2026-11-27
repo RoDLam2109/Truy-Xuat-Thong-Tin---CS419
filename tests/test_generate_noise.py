@@ -43,7 +43,7 @@ class NoiseTests(unittest.TestCase):
 
     def test_protected_identifiers_names_and_numeric_units(self):
         text = "hỏi 12/2020/NĐ-CP, 1.000 đồng 5 năm UBND Hà Nội?"
-        for condition in ("telex_typo", "phonetic", "abbrev", "mixed_high"):
+        for condition in ("no_diacritics", "telex_typo", "phonetic", "abbrev", "mixed_high"):
             with self.subTest(condition=condition):
                 result, audit = self.transform(text, condition)
                 self.assertTrue(result["text"].endswith("12/2020/NĐ-CP, 1.000 đồng 5 năm UBND Hà Nội?"))
@@ -70,6 +70,21 @@ class NoiseTests(unittest.TestCase):
         for lower, higher in zip(changes, changes[1:]):
             for index, change in lower.items():
                 self.assertEqual(change, higher[index])
+
+    def test_partial_diacritics_uses_token_selection_and_keeps_other_accents(self):
+        text = "không được chạy trong trường nước " * 12
+        result, audit = self.transform(text, "no_diacritics", self.config["single_probability"])
+        self.assertGreater(audit["changed_tokens"], 0)
+        self.assertLess(audit["changed_tokens"], audit["eligible_tokens"])
+        self.assertNotEqual(result["text"], noise.strip_diacritics(text))
+        original = text.split()
+        actual = result["text"].split()
+        changed = {c["token_index"] for c in audit["changes"]}
+        for index, (before, after) in enumerate(zip(original, actual)):
+            self.assertEqual(after, noise.strip_diacritics(before) if index in changed else before)
+        clean, empty_audit = self.transform(text, "no_diacritics", 0)
+        self.assertEqual(clean["text"], text)
+        self.assertEqual(empty_audit["changed_tokens"], 0)
 
     def test_collisions_keep_distinct_queries(self):
         clean = [{"id": "1", "text": "có"}, {"id": "2", "text": "cò"}]
@@ -114,6 +129,8 @@ class NoiseTests(unittest.TestCase):
                 with contextlib.redirect_stdout(io.StringIO()):
                     stats = noise.generate(args)
                 self.assertEqual(len(stats["conditions"]), 7)
+                self.assertEqual(stats["conditions"]["no_diacritics"]["target_token_probability"],
+                                 self.config["single_probability"])
                 self.assertEqual(len(list(output_dir.glob("queries_*.jsonl"))), 7)
                 for condition, counts in stats["conditions"].items():
                     actual = noise.read_queries(output_dir / counts["output_file"])

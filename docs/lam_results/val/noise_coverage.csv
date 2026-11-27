@@ -1,0 +1,8 @@
+condition,target_token_probability,actual_token_noise_rate,changed_queries,unchanged_queries,collision_groups,new_collision_groups
+no_diacritics,1.0,0.8555616438356164,482,0,0,0
+telex_typo,0.25,0.21183561643835616,469,13,0,0
+phonetic,0.25,0.010191780821917807,83,399,0,0
+abbrev,0.25,0.017205479452054796,137,345,0,0
+mixed_low,0.1,0.08887671232876712,382,100,0,0
+mixed_medium,0.25,0.21457534246575344,472,10,0,0
+mixed_high,0.4,0.3332602739726027,481,1,0,0
